@@ -1,0 +1,136 @@
+{
+  "task": "defense",
+  "mode": "fallback",
+  "fallback_reason": "network_error",
+  "fallback_detail": "The read operation timed out",
+  "used_sources": [
+    "reid_thesis.pdf",
+    "dachuang_application.pdf",
+    "project_notes.md",
+    "ppt_outline.md",
+    "README_source.md"
+  ],
+  "notes": [
+    "LLM 未启用或调用失败，已使用规则版 fallback。"
+  ],
+  "retry_applied": false,
+  "retry_mode": "",
+  "paths": {
+    "output": "D:\\Documents\\code\\python\\ProjectPilot\\outputs\\defense.md",
+    "meta": "D:\\Documents\\code\\python\\ProjectPilot\\outputs\\defense_meta.json",
+    "evidence": "D:\\Documents\\code\\python\\ProjectPilot\\outputs\\defense_evidence.json",
+    "verify_report": "D:\\Documents\\code\\python\\ProjectPilot\\data\\processed\\verify_report.json"
+  },
+  "initial_verify_report": {
+    "passed": true,
+    "warnings": [],
+    "infos": [
+      "已识别项目名称别名并归一化：基于改进Yolo 和PCBNet 的景区行人重识别系统",
+      "已识别项目名称别名并归一化：基于 Web 的景区行人重识别系统",
+      "已识别项目名称别名并归一化：基于Web的景区行人重识别系统",
+      "已识别项目名称别名并归一化：基于Web的智能行人重识别系统",
+      "必填字段已覆盖。",
+      "生成结果未发现明显脏文本。",
+      "生成结果来源覆盖满足轻量检查。"
+    ],
+    "missing_fields": [],
+    "missing_terms": [],
+    "parse_errors": [],
+    "empty_docs": [],
+    "noisy_output": [],
+    "suspicious_long_fields": [],
+    "repeated_phrases": [],
+    "unsupported_claims": [],
+    "fields_without_sources": [],
+    "project_name_candidates": [
+      "基于改进Yolo和PCBNet的景区行人重识别系统",
+      "基于改进Yolo 和PCBNet 的景区行人重识别系统",
+      "基于 Web 的景区行人重识别系统",
+      "基于Web的景区行人重识别系统",
+      "基于Web的智能行人重识别系统"
+    ],
+    "source_coverage_summary": {
+      "task": "defense",
+      "evidence_sources": [
+        "reid_thesis.pdf",
+        "dachuang_application.pdf",
+        "project_notes.md",
+        "ppt_outline.md",
+        "README_source.md"
+      ],
+      "used_sources": [
+        "reid_thesis.pdf",
+        "dachuang_application.pdf",
+        "project_notes.md",
+        "ppt_outline.md",
+        "README_source.md"
+      ],
+      "covered_sources": [
+        "reid_thesis.pdf",
+        "dachuang_application.pdf",
+        "project_notes.md",
+        "ppt_outline.md",
+        "README_source.md"
+      ],
+      "covered_count": 5,
+      "minimum_expected": 2,
+      "ok": true
+    }
+  },
+  "final_verify_report": {
+    "passed": true,
+    "warnings": [],
+    "infos": [
+      "已识别项目名称别名并归一化：基于改进Yolo 和PCBNet 的景区行人重识别系统",
+      "已识别项目名称别名并归一化：基于 Web 的景区行人重识别系统",
+      "已识别项目名称别名并归一化：基于Web的景区行人重识别系统",
+      "已识别项目名称别名并归一化：基于Web的智能行人重识别系统",
+      "必填字段已覆盖。",
+      "生成结果未发现明显脏文本。",
+      "生成结果来源覆盖满足轻量检查。"
+    ],
+    "missing_fields": [],
+    "missing_terms": [],
+    "parse_errors": [],
+    "empty_docs": [],
+    "noisy_output": [],
+    "suspicious_long_fields": [],
+    "repeated_phrases": [],
+    "unsupported_claims": [],
+    "fields_without_sources": [],
+    "project_name_candidates": [
+      "基于改进Yolo和PCBNet的景区行人重识别系统",
+      "基于改进Yolo 和PCBNet 的景区行人重识别系统",
+      "基于 Web 的景区行人重识别系统",
+      "基于Web的景区行人重识别系统",
+      "基于Web的智能行人重识别系统"
+    ],
+    "source_coverage_summary": {
+      "task": "defense",
+      "evidence_sources": [
+        "reid_thesis.pdf",
+        "dachuang_application.pdf",
+        "project_notes.md",
+        "ppt_outline.md",
+        "README_source.md"
+      ],
+      "used_sources": [
+        "reid_thesis.pdf",
+        "dachuang_application.pdf",
+        "project_notes.md",
+        "ppt_outline.md",
+        "README_source.md"
+      ],
+      "covered_sources": [
+        "reid_thesis.pdf",
+        "dachuang_application.pdf",
+        "project_notes.md",
+        "ppt_outline.md",
+        "README_source.md"
+      ],
+      "covered_count": 5,
+      "minimum_expected": 2,
+      "ok": true
+    }
+  }
+}

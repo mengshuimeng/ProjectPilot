@@ -1,0 +1,1 @@
+ProjectPilot 是面向《基于改进Yolo和PCBNet的景区行人重识别系统》等课程项目的项目材料理解与答辩生成助手。它读取 PDF、Markdown 与 PPT 提纲，围绕项目资料分散、版本口径不一致、人工整理 README 和答辩稿效率低等问题，抽取项目画像、检索关键证据，结合YOLOv8、YOLO、SENet、ResNet50、PCBNet等技术背景生成简介、创新点和答辩稿，并通过自动校验与重试修复提升输出可信度。
