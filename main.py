@@ -78,6 +78,9 @@ def cmd_doctor() -> None:
     tool_status = get_tool_status()
     print(f"- 本地工具数量: {len(tool_status['tools'])}")
     print(f"- Office 转换可用: {tool_status['office_convert_available']}")
+    print(f"- MCP server 文件: {tool_status.get('mcp_server_available', False)}")
+    print(f"- MCP Python 依赖: {tool_status.get('mcp_package_available', False)}")
+    print(f"- MCP 启动命令: {tool_status.get('mcp_server_command', '')}")
     print(f"- MCP server connected: {tool_status['mcp_server_connected']}")
     print(f"- MCP 说明: {tool_status['mcp_note']}")
 

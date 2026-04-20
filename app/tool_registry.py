@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+import importlib.util
 from pathlib import Path
 from typing import Any
 
@@ -39,10 +40,15 @@ def _find_libreoffice() -> str:
 
 def get_tool_status() -> dict[str, Any]:
     office = _find_libreoffice()
+    mcp_package_available = importlib.util.find_spec("mcp") is not None
+    mcp_server_path = Path(__file__).resolve().parent / "mcp_server.py"
     return {
         "tools": list_tools(),
         "mcp_server_connected": False,
-        "mcp_note": "当前版本接入本地工具层，接口设计为 MCP-ready；尚未连接外部 MCP server。",
+        "mcp_server_available": mcp_server_path.exists(),
+        "mcp_package_available": mcp_package_available,
+        "mcp_server_command": "python -m app.mcp_server",
+        "mcp_note": "已提供 stdio MCP server 入口 `python -m app.mcp_server`；是否连接取决于外部 MCP 客户端配置。",
         "office_convert_available": bool(office),
         "office_convert_command": office,
     }

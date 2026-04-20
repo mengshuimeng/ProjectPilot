@@ -65,9 +65,22 @@ ProjectPilot 明确调用外部能力，而不是只做网页聊天。
 - 本地文件检索。
 - Office 转换能力检测。
 - Office 旧格式转换调用。
-- MCP-ready 的工具状态描述。
+- MCP 工具状态描述。
 
-当前版本还没有启动独立 MCP server，但接口设计已经把工具能力从业务逻辑中分离出来。
+`app/mcp_server.py` 提供 stdio MCP server 入口：
+
+```powershell
+python -m app.mcp_server
+```
+
+该 server 暴露以下工具：
+
+- `projectpilot_status`
+- `search_project_files`
+- `search_raw_materials`
+- `convert_office_material`
+
+支持 MCP 的客户端可以通过 stdio 启动该命令，把 ProjectPilot 的本地文件检索、raw 材料检索和 Office 转换能力作为外部工具调用。
 
 ### CLI 工具
 
@@ -152,4 +165,3 @@ data/processed/verify_report.json
 - final verify report
 
 这让项目可以解释“为什么这样生成”，而不是只给一个黑盒答案。
-

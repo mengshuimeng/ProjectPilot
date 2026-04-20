@@ -454,6 +454,7 @@ $env:PROJECTPILOT_LLM_ENABLED="false"
 - project name 抽取已增强，会过滤作者名、摘要、关键词、指导教师等噪声。
 - verifier 已增加 `claim_evidence_alignment`，对输出中的关键声明做轻量句子级证据重叠检查。
 - 已新增本地工具注册层 `app/tool_registry.py`，当前包含本地文件检索和 Office 转换工具。
+- 已新增 `app/mcp_server.py`，提供 stdio MCP server，可暴露 ProjectPilot 状态、工作区文件检索、raw 材料检索和 Office 转换工具。
 - parser 的旧版 Office 转换已改为通过工具层调用。
 - doctor 会显示本地工具数量、Office 转换可用性和 MCP 连接说明。
 - 项目结构已按 GitHub 仓库习惯整理，新增 `.gitignore`、`.env.example`、`.editorconfig`、`.streamlit/config.toml` 和 GitHub Actions CI。
@@ -542,7 +543,7 @@ $env:PROJECTPILOT_LLM_ENABLED="false"
 仍可以继续做的方向：
 
 - 加入 OCR 支持，提高扫描版 PDF 可用性。
-- 将当前本地工具注册层进一步封装为真正外部 MCP server。
+- 扩展更多 MCP 工具，例如 OCR、文档元数据读取和 session 导出。
 - 接入本地 OCR 服务或文档转换服务。
 - 将 claim-evidence 从轻量关键词重叠升级为更严格的语义对齐。
 - 为每个 session 增加导出压缩包功能。

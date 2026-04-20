@@ -243,8 +243,16 @@ def test_local_tool_registry_lists_and_searches_files(tmp_path: Path) -> None:
     status = get_tool_status()
     results = search_local_files(tmp_path, query="anchor", suffixes={".md"})
     assert status["tools"]
-    assert status["mcp_server_connected"] is False
+    assert status["mcp_server_available"] is True
+    assert status["mcp_server_command"] == "python -m app.mcp_server"
     assert results and results[0]["name"] == "demo_anchor.md"
+
+
+def test_mcp_server_can_be_created() -> None:
+    from app.mcp_server import create_server
+
+    server = create_server()
+    assert server is not None
 
 
 def test_display_summaries_are_deduplicated() -> None:

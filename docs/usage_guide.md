@@ -123,6 +123,21 @@ extract -> verify -> intro -> innovation -> defense -> readme
 streamlit run app/ui.py
 ```
 
+## MCP server 使用
+
+启动 stdio MCP server：
+
+```powershell
+python -m app.mcp_server
+```
+
+该 server 面向支持 MCP 的客户端暴露 ProjectPilot 本地工具：
+
+- `projectpilot_status`
+- `search_project_files`
+- `search_raw_materials`
+- `convert_office_material`
+
 页面流程：
 
 1. 上传主材料。
@@ -153,4 +168,3 @@ UI 有两个辅助按钮：
 - `ppt`
 
 旧版 Office 格式依赖本地转换工具。无法转换时，系统会写入 `parse_warning`，不会崩溃。
-

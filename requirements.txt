@@ -4,3 +4,4 @@ python-docx
 python-pptx
 pydantic
 pytest
+mcp
