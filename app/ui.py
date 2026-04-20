@@ -42,10 +42,10 @@ TASK_LABELS = {
 }
 TASK_NAMES = ["intro", "innovation", "defense", "readme"]
 MODE_LABELS = {
-    "Harness + LLM": "Harness + 大模型",
-    "Rule-based": "规则兜底",
-    "llm": "大模型生成",
-    "fallback": "规则兜底",
+    "Harness + LLM": "增强模式",
+    "Rule-based": "本地模式",
+    "llm": "在线生成",
+    "fallback": "本地生成",
 }
 
 
@@ -404,12 +404,12 @@ def _render_profile_summary_card(
             for item in used_sources:
                 st.caption(
                     f"{ROLE_LABELS.get(str(item.get('role', '')), item.get('role', ''))} | "
-                    f"{item.get('source', '未知来源')} | score={item.get('score', '')}"
+                    f"{item.get('source', '未知来源')}"
                 )
         else:
             st.caption("暂无明确来源，或当前字段为待补充。")
         if candidates:
-            st.markdown("**候选句**")
+            st.markdown("**参考片段**")
             for item in candidates[:5]:
                 st.caption(f"- {item.get('text', '')}")
 
@@ -418,8 +418,8 @@ def _report_one_liner(report: dict[str, Any]) -> str:
     if not report:
         return "尚未运行校验。"
     if report.get("passed"):
-        return "项目画像与生成结果通过当前轻量校验。"
-    return "发现需要关注的问题，建议先查看 warning 后再用于提交。"
+        return "项目概览与输出内容已通过当前校验。"
+    return "发现需要关注的问题，建议先查看提示后再用于提交。"
 
 
 def _visible_task_content(task_name: str) -> tuple[str, dict[str, Any], dict[str, Any]]:
@@ -463,16 +463,18 @@ _init_clean_session()
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 1.35rem; padding-bottom: 2rem; max-width: 1320px; }
-    .hero-title { font-size: 2.15rem; font-weight: 800; margin-bottom: 0.12rem; color: #102033; }
-    .hero-subtitle { color: #526173; font-size: 1.02rem; margin-bottom: 0.7rem; }
+    .block-container { padding-top: 2.35rem; padding-bottom: 2rem; max-width: 1320px; }
+    .hero-wrap { border-bottom: 1px solid #e5ebf3; padding: 0.15rem 0 0.9rem; margin-bottom: 0.8rem; }
+    .hero-title { font-size: 2.05rem; line-height: 1.35; font-weight: 760; margin: 0; padding: 0.12rem 0 0.05rem; color: #102033; letter-spacing: 0; overflow: visible; }
+    .hero-subtitle { color: #526173; font-size: 1rem; margin: 0.12rem 0 0.72rem; line-height: 1.55; }
+    .flow-line { color: #64748b; font-size: 0.88rem; margin-top: 0.2rem; }
     .status-row { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 1.15rem; }
     .status-pill { display: inline-flex; gap: 0.35rem; align-items: center; border: 1px solid #d8e0eb; border-radius: 999px; padding: 0.28rem 0.7rem; background: #f8fafc; color: #334155; font-size: 0.86rem; }
     .status-blue { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
     .status-green { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
     .status-yellow { border-color: #fde68a; background: #fffbeb; color: #92400e; }
     .step-heading { display: flex; align-items: flex-start; gap: 0.72rem; margin: 1.05rem 0 0.65rem; }
-    .step-pill { border-radius: 999px; padding: 0.2rem 0.58rem; background: #2563eb; color: white; font-size: 0.78rem; font-weight: 700; }
+    .step-pill { border-radius: 999px; padding: 0.2rem 0.58rem; background: #2563eb; color: white; font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
     .step-title { font-size: 1.2rem; font-weight: 760; color: #102033; line-height: 1.25; }
     .step-subtitle { color: #64748b; font-size: 0.92rem; margin-top: 0.08rem; }
     .upload-title { font-size: 1.08rem; font-weight: 760; color: #102033; margin-bottom: 0.2rem; }
@@ -502,25 +504,29 @@ anchor_doc = profile.get("anchor_document") or next((doc.get("name") for doc in 
 session_id = str(st.session_state.get("session_id", "")).strip()
 mode_tone = "blue" if llm_status.get("mode") == "Harness + LLM" else "yellow"
 
-st.markdown("<div class='hero-title'>ProjectPilot</div>", unsafe_allow_html=True)
-st.markdown("<div class='hero-subtitle'>通用项目材料理解与答辩生成助手</div>", unsafe_allow_html=True)
+model_state = "已连接" if llm_status.get("available") else "本地处理"
 st.markdown(
+    "<div class='hero-wrap'>"
+    "<div class='hero-title'>ProjectPilot</div>"
+    "<div class='hero-subtitle'>通用项目材料整理与答辩生成助手</div>"
     "<div class='status-row'>"
-    + _status_pill("当前模式", _mode_text(llm_status["mode"]), mode_tone)
-    + _status_pill("当前模型", str(llm_status["model"]), "neutral")
-    + _status_pill("当前会话", session_id or "未创建", "neutral")
-    + _status_pill("当前主材料", str(anchor_doc), "green" if anchor_doc != "未选择" else "neutral")
-    + "</div>",
+    + _status_pill("工作模式", _mode_text(llm_status["mode"]), mode_tone)
+    + _status_pill("处理方式", model_state, "neutral")
+    + _status_pill("会话", session_id or "未创建", "neutral")
+    + _status_pill("主材料", str(anchor_doc), "green" if anchor_doc != "未选择" else "neutral")
+    + "</div>"
+    "<div class='flow-line'>上传材料 → 整理项目概览 → 生成答辩与说明文档</div>"
+    "</div>",
     unsafe_allow_html=True,
 )
 
-_section_title("Step 1", "上传材料", "先确定一个主材料，再按需补充 PPT、README、说明书或测试文档。")
+_section_title("步骤 1", "上传材料", "先确定一个主材料，再按需补充 PPT、README、说明书或测试文档。")
 upload_left, upload_right = st.columns([1.15, 1])
 with upload_left:
     with st.container(border=True):
         st.markdown(
             "<div class='anchor-accent'><div class='upload-title'>主材料上传（必填）</div>"
-            "<div class='upload-desc'>上传一个最能代表项目全貌的文件，系统将优先围绕它理解项目。</div></div>",
+            "<div class='upload-desc'>上传一个最能代表项目全貌的文件，后续整理会优先参考它。</div></div>",
             unsafe_allow_html=True,
         )
         anchor_upload = st.file_uploader(
@@ -531,7 +537,7 @@ with upload_left:
             label_visibility="collapsed",
         )
         if anchor_upload is not None:
-            _file_card(anchor_upload.name, "待保存为本次会话的主依据")
+            _file_card(anchor_upload.name, "待保存为本次整理的主材料")
         elif anchor_doc != "未选择":
             _file_card(str(anchor_doc), "当前会话主材料")
         else:
@@ -542,7 +548,7 @@ with upload_right:
     with st.container(border=True):
         st.markdown(
             "<div class='supporting-accent'><div class='upload-title'>补充材料上传（可选）</div>"
-            "<div class='upload-desc'>可上传 PPT、README、说明书、测试文档等增强结果质量。</div></div>",
+            "<div class='upload-desc'>可上传 PPT、README、说明书、测试文档等，让整理结果更完整。</div></div>",
             unsafe_allow_html=True,
         )
         supporting_uploads = st.file_uploader(
@@ -554,7 +560,7 @@ with upload_right:
         )
         if supporting_uploads:
             for uploaded_file in supporting_uploads[:5]:
-                _file_card(uploaded_file.name, "待保存为补充证据")
+                _file_card(uploaded_file.name, "待保存为补充材料")
             if len(supporting_uploads) > 5:
                 st.caption(f"还有 {len(supporting_uploads) - 5} 个文件将在保存时一并处理。")
         else:
@@ -564,13 +570,13 @@ with upload_right:
                     _file_card(str(file_name), "当前会话补充材料")
             else:
                 st.caption("没有补充材料也可以运行。")
-        st.caption("补充材料只增强证据，冲突时默认以主材料为准。")
+        st.caption("补充材料用于完善细节；内容冲突时默认以主材料为准。")
 
-_section_title("Step 2", "解析与操作", "保存材料、运行校验，或一次性生成全部交付物。")
+_section_title("步骤 2", "整理与生成", "保存材料、检查内容，或一次性生成全部交付物。")
 with st.container(border=True):
     action_cols = st.columns([1.35, 1, 1, 0.9, 0.95])
     with action_cols[0]:
-        if st.button("生成全部", type="primary", width="stretch"):
+        if st.button("生成全部材料", type="primary", width="stretch"):
             profile_result = _extract_current_materials(anchor_upload, list(supporting_uploads or []))
             if profile_result is None:
                 st.stop()
@@ -596,7 +602,7 @@ with st.container(border=True):
                 st.success(f"已保存主材料：{manifest['anchor_document'] if manifest else ''}")
                 st.rerun()
     with action_cols[2]:
-        if st.button("运行校验", width="stretch"):
+        if st.button("检查内容", width="stretch"):
             if anchor_upload is not None:
                 _extract_current_materials(anchor_upload, list(supporting_uploads or []))
             elif not _has_raw_files():
@@ -608,7 +614,7 @@ with st.container(border=True):
                 st.session_state["report"] = run_verify(_active_root())
                 st.rerun()
     with action_cols[3]:
-        if st.button("清空当前会话", width="stretch"):
+        if st.button("清空页面", width="stretch"):
             st.session_state["profile"] = {}
             st.session_state["report"] = {}
             st.session_state["docs"] = []
@@ -616,17 +622,17 @@ with st.container(border=True):
             st.session_state["session_id"] = ""
             st.rerun()
     with action_cols[4]:
-        if st.button("重置 Demo 示例", width="stretch"):
+        if st.button("载入示例", width="stretch"):
             _write_demo_materials()
             st.success("已创建新的 Demo 会话。")
             st.rerun()
 
-_section_title("Step 3", "结果展示", "左侧查看项目画像，右侧查看校验状态和生成结果。")
+_section_title("步骤 3", "查看结果", "左侧查看项目概览，右侧查看检查状态和生成内容。")
 main_col, side_col = st.columns([1.05, 1.2])
 
 with main_col:
     with st.container(border=True):
-        st.markdown("#### 项目画像")
+        st.markdown("#### 项目概览")
         if profile:
             st.markdown(f"**{profile.get('project_name') or '未识别项目名称'}**")
             st.caption(profile.get("project_type") or "未识别项目类型")
@@ -651,7 +657,7 @@ with main_col:
             with detail_b:
                 _render_profile_summary_card("局限性", "limitations_summary", "limitation_candidates", profile)
         else:
-            st.info("上传主材料后点击“保存上传并抽取”，或点击“重置 Demo 示例”创建一个干净示例会话。")
+            st.info("上传主材料后点击“保存上传并抽取”，或点击“载入示例”创建一个干净示例会话。")
 
     if docs:
         with st.expander("查看解析文件列表", expanded=False):
@@ -659,14 +665,14 @@ with main_col:
 
 with side_col:
     with st.container(border=True):
-        st.markdown("#### 校验状态")
+        st.markdown("#### 检查状态")
         if report:
             warn_count = len(report.get("warnings", []))
             info_count = len(report.get("infos", []))
             if report.get("passed"):
                 st.success("校验通过")
             else:
-                st.warning("校验存在警告")
+                st.warning("存在需要关注的提示")
             m1, m2, m3 = st.columns(3)
             m1.metric("状态", "通过" if report.get("passed") else "需关注")
             m2.metric("警告", warn_count)
@@ -686,7 +692,7 @@ with side_col:
             content, meta, _ = _visible_task_content(task_name)
             warnings = list((meta.get("final_verify_report") or {}).get("warnings", [])) if meta else []
             if warnings:
-                st.warning("当前产物存在校验提示：" + "；".join(str(item) for item in warnings[:2]))
+                st.warning("当前内容存在提示：" + "；".join(str(item) for item in warnings[:2]))
 
             if st.button(f"生成{TASK_LABELS[task_name]}", key=f"generate_{task_name}", width="stretch"):
                 profile_result = _extract_current_materials(anchor_upload, list(supporting_uploads or []))
@@ -704,44 +710,44 @@ with side_col:
                 with st.container(border=True):
                     st.markdown(content)
             else:
-                st.info("暂无输出。可点击本页签内按钮单独生成，或在 Step 2 点击“生成全部”。")
+                st.info("暂无输出。可点击本页签内按钮单独生成，或在步骤 2 点击“生成全部材料”。")
 
             if meta:
                 source_col, mode_col = st.columns([1.25, 0.75])
                 with source_col:
-                    st.markdown("**使用来源**")
+                    st.markdown("**参考材料**")
                     st.markdown(
                         f"<div class='source-note'>{html.escape('、'.join(meta.get('used_sources', [])) or '暂无')}</div>",
                         unsafe_allow_html=True,
                     )
                 with mode_col:
-                    st.markdown("**生成信息**")
-                    st.caption(f"模式：{_mode_text(str(meta.get('generation_mode') or meta.get('mode') or '未知'))}")
-                    st.caption("重试修复：已发生" if meta.get("retry_used") or meta.get("retry_applied") else "重试修复：未发生")
-                    st.caption(f"来源角色：{_role_text(list(meta.get('used_roles', [])))}")
+                    st.markdown("**处理信息**")
+                    st.caption(f"方式：{_mode_text(str(meta.get('generation_mode') or meta.get('mode') or '未知'))}")
+                    st.caption("自动修正：已发生" if meta.get("retry_used") or meta.get("retry_applied") else "自动修正：未发生")
+                    st.caption(f"材料类型：{_role_text(list(meta.get('used_roles', [])))}")
 
-_section_title("Evidence", "证据与来源", "展示当前产物背后的 anchor / supporting 来源、证据数量和追踪文件。")
+_section_title("材料依据", "参考来源", "展示当前内容参考了哪些主材料和补充材料。")
 latest_task = _latest_visible_task()
 evidence_info = _evidence_summary(latest_task, profile)
 with st.container(border=True):
     if not latest_task or not evidence_info:
-        st.info("生成任一产物后，这里会显示证据链摘要。")
+        st.info("生成任一内容后，这里会显示材料依据摘要。")
     else:
         st.markdown(f"**当前查看任务：{TASK_LABELS.get(latest_task, latest_task)}**")
         ev_a, ev_b, ev_c, ev_d = st.columns(4)
-        ev_a.metric("主材料来源", evidence_info.get("anchor_document", "暂无"))
-        ev_b.metric("证据块数量", len(evidence_info.get("chunks", [])))
-        ev_c.metric("生成模式", evidence_info.get("mode", "未知"))
-        ev_d.metric("重试修复", "已发生" if evidence_info.get("retry") else "未发生")
+        ev_a.metric("主材料", evidence_info.get("anchor_document", "暂无"))
+        ev_b.metric("参考片段", len(evidence_info.get("chunks", [])))
+        ev_c.metric("处理方式", evidence_info.get("mode", "未知"))
+        ev_d.metric("自动修正", "已发生" if evidence_info.get("retry") else "未发生")
 
-        st.markdown("**Anchor 来源**")
+        st.markdown("**主材料来源**")
         _badge_list(evidence_info.get("anchor_sources", []) or [evidence_info.get("anchor_document", "暂无")], 8)
-        st.markdown("**Supporting 来源**")
+        st.markdown("**补充材料来源**")
         supporting_sources = evidence_info.get("supporting_sources", [])
         if supporting_sources:
             _badge_list(supporting_sources, 12)
         else:
-            st.caption("当前任务未使用补充来源，或尚未检索到补充证据。")
+            st.caption("当前内容未使用补充材料，或尚未找到可用补充片段。")
 
         paths = evidence_info.get("paths", {})
         if paths:
