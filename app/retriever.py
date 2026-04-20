@@ -8,77 +8,101 @@ from app.extractor import clean_document_text, is_noise_paragraph, normalize_tex
 
 TASK_KEYWORDS = {
     "intro": [
-        "ProjectPilot",
-        "项目材料",
-        "答辩",
-        "README",
         "背景",
+        "痛点",
+        "问题",
+        "用户",
+        "对象",
+        "技术",
+        "项目",
+        "目标",
         "场景",
-        "核心技术",
-        "模块",
-        "景区",
-        "重识别",
+        "background",
+        "pain",
+        "user",
     ],
     "innovation": [
         "创新",
+        "亮点",
+        "优势",
+        "架构",
+        "成果",
+        "交付",
         "Harness",
         "证据",
-        "检索",
         "校验",
-        "反馈闭环",
-        "来源",
-        "LLM",
-        "prompt",
-        "skills",
+        "重试",
+        "innovation",
+        "deliverable",
     ],
     "defense": [
-        "痛点",
         "背景",
-        "项目材料",
-        "系统",
+        "痛点",
         "方案",
-        "Harness",
-        "外部工具",
-        "校验",
-        "答辩",
+        "架构",
+        "模块",
+        "实验",
         "结果",
+        "不足",
+        "Harness",
+        "答辩",
+        "workflow",
+        "architecture",
     ],
     "readme": [
-        "ProjectPilot",
-        "功能",
+        "项目名称",
+        "项目类型",
+        "技术",
         "架构",
-        "Harness",
+        "使用",
         "运行",
-        "环境变量",
-        "CLI",
-        "LLM",
+        "功能",
+        "安装",
+        "Harness",
+        "README",
+        "usage",
     ],
 }
 
 TASK_FIELD_PREFERENCES = {
-    "intro": ["background_summary", "application_scenarios", "pain_point_summary"],
-    "innovation": ["innovation_summary", "pain_point_summary", "future_work"],
+    "intro": ["background", "pain_points", "target_users", "core_technologies"],
+    "innovation": ["innovation_points", "system_architecture", "deliverables", "future_work"],
     "defense": [
-        "background_summary",
-        "pain_point_summary",
-        "innovation_summary",
-        "experiment_summary",
-        "application_scenarios",
+        "background",
+        "pain_points",
+        "system_architecture",
+        "system_modules",
+        "experiment_results",
+        "limitations",
+        "innovation_points",
     ],
-    "readme": ["background_summary", "pain_point_summary", "innovation_summary", "limitations"],
+    "readme": [
+        "project_type",
+        "project_name",
+        "core_technologies",
+        "system_architecture",
+        "deliverables",
+        "future_work",
+    ],
 }
 
-SOURCE_WEIGHTS = {
-    "project_notes.md": 2.2,
-    "README_source.md": 2.0,
-    "ppt_outline.md": 1.6,
-    "dachuang_application.pdf": 1.2,
-    "reid_thesis.pdf": 0.75,
-}
+
+def _role_weight(role: str) -> float:
+    return 2.4 if role == "anchor" else 1.0
 
 
-def _source_weight(source: str) -> float:
-    return SOURCE_WEIGHTS.get(source, 1.0)
+def _supporting_bonus(task: str, text: str) -> float:
+    lower = text.lower()
+    bonus = 0.0
+    if task == "intro" and any(token in lower for token in ["简介", "概述", "readme"]):
+        bonus += 0.8
+    if task == "innovation" and any(token in lower for token in ["harness", "校验", "证据", "重试", "亮点"]):
+        bonus += 1.2
+    if task == "defense" and any(token in lower for token in ["ppt", "答辩", "总结", "成果"]):
+        bonus += 1.0
+    if task == "readme" and any(token in lower for token in ["安装", "运行", "使用", "readme", "cli"]):
+        bonus += 1.0
+    return bonus
 
 
 def _keyword_score(text: str, keywords: list[str]) -> float:
@@ -88,27 +112,34 @@ def _keyword_score(text: str, keywords: list[str]) -> float:
 
 def _length_penalty(text: str) -> float:
     length = len(text)
-    if length < 40:
-        return 0.55
-    if length > 900:
-        return 0.65
-    if length > 650:
-        return 0.85
+    if length < 35:
+        return 0.5
+    if length > 1000:
+        return 0.62
+    if length > 700:
+        return 0.82
     return 1.0
 
 
-def _make_candidate(source: str, text: str, task: str, origin: str, field: str = "") -> dict[str, Any]:
-    keywords = TASK_KEYWORDS.get(task, [])
+def _make_candidate(
+    source: str,
+    role: str,
+    text: str,
+    task: str,
+    origin: str,
+    field: str = "",
+) -> dict[str, Any]:
     normalized = normalize_text(text)
-    score = _keyword_score(normalized, keywords) * _source_weight(source) * _length_penalty(normalized)
+    score = _keyword_score(normalized, TASK_KEYWORDS.get(task, [])) * _role_weight(role) * _length_penalty(normalized)
     if field and field in TASK_FIELD_PREFERENCES.get(task, []):
-        score += 1.2
-    if "ProjectPilot" in normalized and task in {"intro", "innovation", "defense", "readme"}:
-        score += 1.0
+        score += 1.5 * _role_weight(role)
+    if role == "supporting":
+        score += _supporting_bonus(task, normalized)
     if "Harness" in normalized and task in {"innovation", "defense", "readme"}:
         score += 1.0
     return {
         "source": source,
+        "role": role,
         "text": normalized,
         "score": round(score, 3),
         "origin": origin,
@@ -120,44 +151,67 @@ def retrieve_evidence(
     task: str,
     profile: dict[str, Any],
     docs: list[dict[str, Any]],
-    limit: int = 8,
+    limit: int = 10,
 ) -> dict[str, Any]:
     task = task.lower()
     if task not in TASK_KEYWORDS:
         raise ValueError(f"Unsupported evidence task: {task}")
 
+    source_roles = profile.get("source_roles", {})
     candidates: list[dict[str, Any]] = []
 
     for field in TASK_FIELD_PREFERENCES.get(task, []):
+        field_value = profile.get(field)
+        if isinstance(field_value, list):
+            field_value = "、".join(str(item) for item in field_value)
+        if isinstance(field_value, str) and field_value.strip():
+            candidates.append(
+                _make_candidate(
+                    source="profile",
+                    role="anchor",
+                    text=field_value,
+                    task=task,
+                    origin="profile",
+                    field=field,
+                )
+            )
         for item in profile.get("field_sources", {}).get(field, []):
             text = str(item.get("text", ""))
             source = str(item.get("source", "profile"))
+            role = str(item.get("role") or source_roles.get(source, "supporting"))
             if text and not is_noise_paragraph(text):
-                candidates.append(_make_candidate(source, text, task, "profile", field))
+                candidates.append(_make_candidate(source, role, text, task, "profile", field))
 
     for doc in docs:
         source = str(doc.get("name", ""))
-        text = str(doc.get("text", ""))
-        if "[PDF_PARSE_ERROR]" in text:
+        role = str(doc.get("role", source_roles.get(source, "supporting")))
+        if doc.get("parse_status") in {"unsupported", "parse_warning"} and not doc.get("text"):
             continue
-        cleaned_text = clean_document_text(text)
+        cleaned_text = clean_document_text(str(doc.get("text", "")))
         paragraphs = split_paragraphs(cleaned_text)
         if not paragraphs and cleaned_text:
-            paragraphs = chunk_text(cleaned_text, max_chars=650, overlap=80)
+            paragraphs = chunk_text(cleaned_text, max_chars=750, overlap=90)
         for paragraph in paragraphs:
             if is_noise_paragraph(paragraph):
                 continue
-            chunk = paragraph if len(paragraph) <= 850 else paragraph[:850]
-            candidate = _make_candidate(source, chunk, task, "document")
+            chunk = paragraph if len(paragraph) <= 900 else paragraph[:900]
+            candidate = _make_candidate(source, role, chunk, task, "document")
             if candidate["score"] > 0:
                 candidates.append(candidate)
 
-    candidates.sort(key=lambda item: item["score"], reverse=True)
+    candidates.sort(key=lambda item: (item["score"], item.get("role") == "anchor"), reverse=True)
 
     selected: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
+
+    # Ensure the anchor is represented whenever possible.
+    anchor_candidate = next((item for item in candidates if item.get("role") == "anchor" and item["source"] != "profile"), None)
+    if anchor_candidate:
+        selected.append(anchor_candidate)
+        seen.add((anchor_candidate["source"], anchor_candidate["text"][:140]))
+
     for candidate in candidates:
-        key = (candidate["source"], candidate["text"][:120])
+        key = (candidate["source"], candidate["text"][:140])
         if key in seen:
             continue
         selected.append(candidate)
@@ -165,14 +219,23 @@ def retrieve_evidence(
         if len(selected) >= limit:
             break
 
+    role_summary = {
+        role: sum(1 for chunk in selected if chunk.get("role") == role)
+        for role in ("anchor", "supporting")
+    }
+    source_summary = {
+        source: sum(1 for chunk in selected if chunk.get("source") == source)
+        for source in sorted({chunk.get("source", "") for chunk in selected})
+    }
+
     return {
         "task": task,
+        "session_id": profile.get("session_id", ""),
+        "anchor_document": profile.get("anchor_document", ""),
         "query_keywords": TASK_KEYWORDS[task],
         "chunks": selected,
-        "source_summary": {
-            source: sum(1 for chunk in selected if chunk.get("source") == source)
-            for source in sorted({chunk.get("source", "") for chunk in selected})
-        },
+        "role_summary": role_summary,
+        "source_summary": source_summary,
     }
 
 
@@ -181,7 +244,6 @@ def retrieve_relevant_paragraphs(
     query_keywords: list[str],
     limit: int = 5,
 ) -> list[dict[str, str]]:
-    """Compatibility wrapper for the original rule-based retriever API."""
     candidates: list[dict[str, Any]] = []
     for doc in docs:
         source = str(doc.get("name", ""))

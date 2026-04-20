@@ -1,5 +1,6 @@
 streamlit
 pymupdf
 python-docx
+python-pptx
 pydantic
 pytest
