@@ -10,7 +10,7 @@ ProjectPilot/
   prompts/             # LLM 任务提示词
   skills/              # Harness 上下文规则
   tests/               # 自动化测试
-  docs/                # 开发记录和说明文档
+  docs/                # 设计、使用、演示和维护文档
   data/                # 运行时数据入口和中间产物
   outputs/             # 生成结果
   main.py              # CLI 入口
@@ -104,3 +104,17 @@ data/sessions/{session_id}/
 
 Streamlit 运行日志和 smoke-test 重定向输出不应提交。
 
+## docs 目录说明
+
+`docs/` 当前包含：
+
+- `README.md`：文档目录索引。
+- `overview.md`：项目定位、能力和边界。
+- `usage_guide.md`：CLI、UI、环境变量和输出路径。
+- `architecture.md`：系统架构和模块职责。
+- `harness_design.md`：Harness Engineering 三类设计。
+- `data_contracts.md`：主要 JSON 产物字段说明。
+- `quality_and_testing.md`：文本清洗、展示摘要、校验器和测试覆盖。
+- `demo_guide.md`：3 分钟录屏演示路线。
+- `roadmap.md`：后续优化方向。
+- `development_record.md`：开发过程记录。

@@ -245,3 +245,116 @@ def test_local_tool_registry_lists_and_searches_files(tmp_path: Path) -> None:
     assert status["tools"]
     assert status["mcp_server_connected"] is False
     assert results and results[0]["name"] == "demo_anchor.md"
+
+
+def test_display_summaries_are_deduplicated() -> None:
+    docs = [
+        {
+            "name": "anchor.md",
+            "role": "anchor",
+            "text": "\n".join(
+                [
+                    "项目名称：摘要去重测试系统",
+                    "项目背景：课程项目资料分散在说明书、PPT 和 README 中，人工整理材料效率较低。",
+                    "痛点：项目资料版本多、口径不统一，人工整理 README 和答辩稿容易重复和误写。",
+                    "创新点：系统采用 anchor 优先、supporting 补充、证据检索和校验反馈闭环。",
+                    "预期成果：形成可运行的软件系统、项目 README、答辩稿和演示视频。",
+                    "技术路线：模型训练过程包含 Backbone、TriHard、Batch Size、数据增强等实验细节。",
+                    "后续优化：仍需优化扫描版 PDF 解析和 unsupported claims 检查能力。",
+                ]
+            ),
+            "char_count": 300,
+            "parse_status": "parsed",
+            "parse_warning": "",
+            "suffix": ".md",
+        }
+    ]
+    profile = build_profile(docs)
+    summaries = profile["display_summaries"]
+    assert summaries["background_summary"] != summaries["pain_points_summary"]
+    assert summaries["limitations_summary"] != summaries["pain_points_summary"]
+    assert "display_summaries" in profile
+
+
+def test_deliverables_summary_avoids_training_detail_pollution() -> None:
+    docs = [
+        {
+            "name": "anchor.md",
+            "role": "anchor",
+            "text": "\n".join(
+                [
+                    "项目名称：交付物抽取测试系统",
+                    "项目背景：该项目用于测试项目材料抽取。",
+                    "算法细节：训练过程包含 Backbone、TriHard、Batch Size、数据增强和学习率设置。",
+                    "预期成果：完成一套可演示的软件系统，提交 README 文档、答辩稿和演示视频。",
+                ]
+            ),
+            "char_count": 220,
+            "parse_status": "parsed",
+            "parse_warning": "",
+            "suffix": ".md",
+        }
+    ]
+    profile = build_profile(docs)
+    deliverables = profile["display_summaries"]["deliverables_summary"]
+    dirty_terms = ["Backbone", "TriHard", "Batch Size", "数据增强"]
+    assert sum(1 for term in dirty_terms if term in deliverables) < 2
+    assert "软件系统" in deliverables or "README" in deliverables or "演示视频" in deliverables
+
+
+def test_missing_limitations_uses_placeholder_instead_of_pain_points() -> None:
+    docs = [
+        {
+            "name": "anchor.md",
+            "role": "anchor",
+            "text": "\n".join(
+                [
+                    "项目名称：局限性占位测试系统",
+                    "项目背景：系统面向课程项目材料整理场景。",
+                    "痛点：材料分散、人工整理效率低、版本口径不一致。",
+                    "创新点：系统采用证据检索和自动校验生成答辩材料。",
+                    "预期成果：形成 README、答辩稿和演示视频。",
+                ]
+            ),
+            "char_count": 180,
+            "parse_status": "parsed",
+            "parse_warning": "",
+            "suffix": ".md",
+        }
+    ]
+    profile = build_profile(docs)
+    summaries = profile["display_summaries"]
+    assert "待补充" in summaries["limitations_summary"]
+    assert summaries["limitations_summary"] != summaries["pain_points_summary"]
+
+
+def test_verifier_reports_field_duplication_and_summary_quality() -> None:
+    profile = {
+        "project_name": "重复检测测试系统",
+        "project_type": "通用项目",
+        "background": "背景",
+        "pain_points": "痛点",
+        "core_technologies": ["Python"],
+        "anchor_document": "anchor.md",
+        "display_summaries": {
+            "background_summary": "项目资料分散，人工整理 README 和答辩稿效率低。",
+            "pain_points_summary": "项目资料分散，人工整理 README 和答辩稿效率低。",
+            "innovation_summary": "系统采用证据检索和自动校验。",
+            "deliverables_summary": "训练过程包含 Backbone、TriHard、Batch Size 和数据增强。",
+            "limitations_summary": "项目资料分散，人工整理 README 和答辩稿效率低。",
+        },
+    }
+    docs = [
+        {
+            "name": "anchor.md",
+            "role": "anchor",
+            "text": "项目名称：重复检测测试系统",
+            "char_count": 20,
+            "parse_status": "parsed",
+            "parse_warning": "",
+            "suffix": ".md",
+        }
+    ]
+    report = verify_profile(profile, docs)
+    assert report["field_duplication"]["duplicated_field_pairs"]
+    assert report["summary_quality_warnings"]

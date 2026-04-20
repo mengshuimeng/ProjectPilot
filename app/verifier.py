@@ -36,6 +36,35 @@ CLAIM_TERMS = [
     "提升",
 ]
 
+SUMMARY_FIELD_PAIRS = [
+    ("background_summary", "pain_points_summary"),
+    ("pain_points_summary", "limitations_summary"),
+    ("innovation_summary", "deliverables_summary"),
+    ("deliverables_summary", "limitations_summary"),
+]
+
+SUMMARY_LABELS = {
+    "background_summary": "背景摘要",
+    "pain_points_summary": "痛点摘要",
+    "innovation_summary": "创新点摘要",
+    "deliverables_summary": "交付物",
+    "limitations_summary": "局限性",
+}
+
+TRAINING_DETAIL_TERMS = [
+    "Backbone",
+    "TriHard",
+    "Batch Size",
+    "batch size",
+    "数据增强",
+    "训练过程",
+    "学习率",
+    "epoch",
+    "损失函数",
+    "Neck",
+    "Head",
+]
+
 
 def _is_empty(value: Any) -> bool:
     if value is None:
@@ -51,6 +80,78 @@ def _as_text(value: Any) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False)
+
+
+def _summary_text(profile: dict[str, Any], summary_key: str) -> str:
+    display = profile.get("display_summaries") or {}
+    if isinstance(display, dict) and display.get(summary_key):
+        return str(display.get(summary_key, ""))
+    fallback = {
+        "background_summary": profile.get("background") or profile.get("background_summary"),
+        "pain_points_summary": profile.get("pain_points") or profile.get("pain_point_summary"),
+        "innovation_summary": profile.get("innovation_points") or profile.get("innovation_summary"),
+        "deliverables_summary": profile.get("deliverables") or profile.get("deliverables_summary"),
+        "limitations_summary": profile.get("limitations") or profile.get("limitations_summary"),
+    }
+    return str(fallback.get(summary_key) or "")
+
+
+def _summary_tokens(text: str) -> set[str]:
+    tokens = set(re.findall(r"[A-Za-z][A-Za-z0-9.+#-]{1,}|[\u4e00-\u9fff]{2,}", text))
+    compact = re.sub(r"\s+", "", text)
+    if len(tokens) < 3:
+        tokens.update(compact[index : index + 2] for index in range(max(0, len(compact) - 1)))
+    return {token.lower() for token in tokens if token.strip()}
+
+
+def _summary_similarity(left: str, right: str) -> float:
+    left_tokens = _summary_tokens(left)
+    right_tokens = _summary_tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+
+
+def _check_field_duplication(profile: dict[str, Any]) -> dict[str, Any]:
+    duplicated_pairs: list[dict[str, Any]] = []
+    quality_warnings: list[str] = []
+    summaries = {field: _summary_text(profile, field).strip() for field, _ in SUMMARY_FIELD_PAIRS}
+    summaries.update({right: _summary_text(profile, right).strip() for _, right in SUMMARY_FIELD_PAIRS})
+
+    for left, right in SUMMARY_FIELD_PAIRS:
+        left_text = summaries.get(left, "")
+        right_text = summaries.get(right, "")
+        if not left_text or not right_text or "待补充" in left_text or "待补充" in right_text:
+            continue
+        similarity = _summary_similarity(left_text, right_text)
+        if similarity > 0.6 or left_text == right_text:
+            duplicated_pairs.append(
+                {
+                    "left": left,
+                    "right": right,
+                    "left_label": SUMMARY_LABELS[left],
+                    "right_label": SUMMARY_LABELS[right],
+                    "similarity": round(similarity, 3),
+                }
+            )
+
+    deliverables_text = summaries.get("deliverables_summary", "")
+    training_hits = [term for term in TRAINING_DETAIL_TERMS if term.lower() in deliverables_text.lower()]
+    if len(training_hits) >= 2:
+        quality_warnings.append(
+            "交付物摘要疑似抽到了算法训练细节，而不是成果/产出/系统/论文/专利等交付内容。"
+        )
+
+    pain_text = summaries.get("pain_points_summary", "")
+    limitation_text = summaries.get("limitations_summary", "")
+    if pain_text and limitation_text and "待补充" not in limitation_text and _summary_similarity(pain_text, limitation_text) > 0.55:
+        quality_warnings.append("局限性摘要与痛点摘要高度相似，可能存在字段复用。")
+
+    return {
+        "duplicated_field_pairs": duplicated_pairs,
+        "summary_quality_warnings": quality_warnings,
+        "ok": not duplicated_pairs and not quality_warnings,
+    }
 
 
 def _find_noisy_output(output_text: str) -> list[str]:
@@ -279,6 +380,7 @@ def verify_profile(
     parse_warnings_summary = _parse_warnings_summary(docs)
     noisy_output = _find_noisy_output(output_text) if output_text else []
     suspicious_long_fields = _find_suspicious_long_fields(profile)
+    field_duplication = _check_field_duplication(profile)
     repeated_phrases = _find_repeated_phrases(output_text) if output_text else []
     source_coverage_summary = _source_coverage(output_text, evidence, used_sources, used_roles, task)
     unsupported_claims = _find_unsupported_claims(output_text, profile, evidence) if output_text else []
@@ -306,6 +408,10 @@ def verify_profile(
         warnings.append("生成结果疑似混入目录、页眉页脚、章节号、页码或公式残片。")
     if suspicious_long_fields:
         warnings.append("部分 profile 字段过长或疑似混入脏文本。")
+    if field_duplication["duplicated_field_pairs"]:
+        warnings.append("项目画像展示摘要存在字段间高度重复，请检查抽取结果。")
+    if field_duplication["summary_quality_warnings"]:
+        warnings.extend(field_duplication["summary_quality_warnings"])
     if repeated_phrases:
         warnings.append("生成结果存在重复句子或拼接痕迹。")
     if output_text and not source_coverage_summary["ok"]:
@@ -340,6 +446,9 @@ def verify_profile(
         "empty_docs": empty_docs,
         "noisy_output": noisy_output,
         "suspicious_long_fields": suspicious_long_fields,
+        "field_duplication": field_duplication,
+        "duplicated_field_pairs": field_duplication["duplicated_field_pairs"],
+        "summary_quality_warnings": field_duplication["summary_quality_warnings"],
         "repeated_phrases": repeated_phrases,
         "unsupported_claims": unsupported_claims,
         "claim_evidence_alignment": claim_evidence_alignment,

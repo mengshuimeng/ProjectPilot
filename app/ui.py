@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import html
 import sys
 import uuid
 from datetime import datetime
@@ -293,17 +294,201 @@ def _hide_generated_outputs() -> None:
     st.session_state["visible_tasks"] = []
 
 
+def _short_text(value: Any, limit: int = 260) -> str:
+    if isinstance(value, list):
+        text = "；".join(str(item).strip() for item in value if str(item).strip())
+    else:
+        text = str(value or "").strip()
+    if not text:
+        return "暂无"
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _compact_list(value: Any, limit: int = 10) -> list[str]:
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, str):
+        items = [part.strip(" -，,；;") for part in value.replace("\n", "；").split("；")]
+    else:
+        items = []
+    clean_items: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        if text and text not in clean_items:
+            clean_items.append(text)
+    return clean_items[:limit]
+
+
+def _section_title(step: str, title: str, subtitle: str) -> None:
+    st.markdown(
+        f"""
+        <div class="step-heading">
+            <span class="step-pill">{html.escape(step)}</span>
+            <div>
+                <div class="step-title">{html.escape(title)}</div>
+                <div class="step-subtitle">{html.escape(subtitle)}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _status_pill(label: str, value: str, tone: str = "neutral") -> str:
+    return (
+        f"<span class='status-pill status-{tone}'>"
+        f"<b>{html.escape(label)}</b> {html.escape(value or '暂无')}"
+        "</span>"
+    )
+
+
+def _file_card(name: str, caption: str = "") -> None:
+    caption_html = f"<div class='file-caption'>{html.escape(caption)}</div>" if caption else ""
+    st.markdown(
+        f"""
+        <div class="file-card">
+            <div class="file-name">{html.escape(name)}</div>
+            {caption_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _summary_card(title: str, body: Any, tone: str = "neutral") -> None:
+    st.markdown(
+        f"""
+        <div class="summary-card summary-{tone}">
+            <div class="summary-title">{html.escape(title)}</div>
+            <div class="summary-body">{html.escape(_short_text(body, 360))}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _display_summary(profile: dict[str, Any], summary_key: str) -> str:
+    display = profile.get("display_summaries") or {}
+    text = str(display.get(summary_key, "")).strip() if isinstance(display, dict) else ""
+    return text or "当前材料中未提取到高质量内容，待补充"
+
+
+def _summary_sources(profile: dict[str, Any], summary_key: str) -> list[dict[str, Any]]:
+    sources = profile.get("display_summary_sources") or {}
+    if isinstance(sources, dict):
+        return list(sources.get(summary_key, []) or [])
+    return []
+
+
+def _summary_candidates(profile: dict[str, Any], candidate_key: str) -> list[dict[str, Any]]:
+    candidates = profile.get("field_candidates") or {}
+    if isinstance(candidates, dict):
+        return list(candidates.get(candidate_key, []) or [])
+    return []
+
+
+def _render_profile_summary_card(
+    title: str,
+    summary_key: str,
+    candidate_key: str,
+    profile: dict[str, Any],
+    tone: str = "neutral",
+) -> None:
+    _summary_card(title, _display_summary(profile, summary_key), tone)
+    used_sources = _summary_sources(profile, summary_key)
+    candidates = _summary_candidates(profile, candidate_key)
+    with st.expander(f"{title}来源", expanded=False):
+        if used_sources:
+            for item in used_sources:
+                st.caption(
+                    f"{ROLE_LABELS.get(str(item.get('role', '')), item.get('role', ''))} | "
+                    f"{item.get('source', '未知来源')} | score={item.get('score', '')}"
+                )
+        else:
+            st.caption("暂无明确来源，或当前字段为待补充。")
+        if candidates:
+            st.markdown("**候选句**")
+            for item in candidates[:5]:
+                st.caption(f"- {item.get('text', '')}")
+
+
+def _report_one_liner(report: dict[str, Any]) -> str:
+    if not report:
+        return "尚未运行校验。"
+    if report.get("passed"):
+        return "项目画像与生成结果通过当前轻量校验。"
+    return "发现需要关注的问题，建议先查看 warning 后再用于提交。"
+
+
+def _visible_task_content(task_name: str) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    task_visible = task_name in st.session_state.get("visible_tasks", [])
+    if not task_visible:
+        return "", {}, {}
+    outputs_dir = _active_outputs_dir()
+    return (
+        _read_text(outputs_dir / f"{task_name}.md"),
+        _read_json(outputs_dir / f"{task_name}_meta.json"),
+        _read_json(outputs_dir / f"{task_name}_evidence.json"),
+    )
+
+
+def _latest_visible_task() -> str | None:
+    visible_tasks = [task for task in st.session_state.get("visible_tasks", []) if task in TASK_NAMES]
+    return visible_tasks[-1] if visible_tasks else None
+
+
+def _evidence_summary(task_name: str | None, profile: dict[str, Any]) -> dict[str, Any]:
+    if not task_name:
+        return {}
+    _, meta, evidence = _visible_task_content(task_name)
+    chunks = evidence.get("chunks", []) if isinstance(evidence, dict) else []
+    anchor_sources = sorted({chunk.get("source", "") for chunk in chunks if chunk.get("role") == "anchor"})
+    supporting_sources = sorted({chunk.get("source", "") for chunk in chunks if chunk.get("role") == "supporting"})
+    return {
+        "task": task_name,
+        "chunks": chunks,
+        "anchor_sources": [item for item in anchor_sources if item],
+        "supporting_sources": [item for item in supporting_sources if item],
+        "retry": bool(meta.get("retry_used") or meta.get("retry_applied")),
+        "mode": _mode_text(str(meta.get("generation_mode") or meta.get("mode") or "未知")),
+        "paths": meta.get("paths", {}),
+        "anchor_document": evidence.get("anchor_document") or profile.get("anchor_document") or "暂无",
+    }
+
+
 st.set_page_config(page_title="ProjectPilot", layout="wide")
 _init_clean_session()
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 2rem; }
-    .hero-title { font-size: 2.4rem; font-weight: 800; margin-bottom: 0.2rem; }
-    .hero-subtitle { color: #546371; font-size: 1.05rem; margin-bottom: 1rem; }
-    .metric-band { border: 1px solid #d7dee8; border-radius: 8px; padding: 0.85rem; background: #fbfcfe; }
-    .tag { display: inline-block; border: 1px solid #cfd8e3; border-radius: 8px; padding: 0.18rem 0.5rem; margin: 0.12rem; background: #f7fafc; }
-    .small-muted { color: #65758b; font-size: 0.9rem; }
+    .block-container { padding-top: 1.35rem; padding-bottom: 2rem; max-width: 1320px; }
+    .hero-title { font-size: 2.15rem; font-weight: 800; margin-bottom: 0.12rem; color: #102033; }
+    .hero-subtitle { color: #526173; font-size: 1.02rem; margin-bottom: 0.7rem; }
+    .status-row { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 1.15rem; }
+    .status-pill { display: inline-flex; gap: 0.35rem; align-items: center; border: 1px solid #d8e0eb; border-radius: 999px; padding: 0.28rem 0.7rem; background: #f8fafc; color: #334155; font-size: 0.86rem; }
+    .status-blue { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+    .status-green { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+    .status-yellow { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+    .step-heading { display: flex; align-items: flex-start; gap: 0.72rem; margin: 1.05rem 0 0.65rem; }
+    .step-pill { border-radius: 999px; padding: 0.2rem 0.58rem; background: #2563eb; color: white; font-size: 0.78rem; font-weight: 700; }
+    .step-title { font-size: 1.2rem; font-weight: 760; color: #102033; line-height: 1.25; }
+    .step-subtitle { color: #64748b; font-size: 0.92rem; margin-top: 0.08rem; }
+    .upload-title { font-size: 1.08rem; font-weight: 760; color: #102033; margin-bottom: 0.2rem; }
+    .upload-desc { color: #64748b; font-size: 0.9rem; min-height: 2.5rem; }
+    .anchor-accent { border-left: 4px solid #2563eb; padding-left: 0.65rem; }
+    .supporting-accent { border-left: 4px solid #94a3b8; padding-left: 0.65rem; }
+    .file-card { border: 1px solid #dbe3ee; border-radius: 8px; padding: 0.55rem 0.65rem; background: #f8fafc; margin: 0.28rem 0; }
+    .file-name { font-weight: 700; color: #1e293b; overflow-wrap: anywhere; }
+    .file-caption { color: #64748b; font-size: 0.84rem; margin-top: 0.12rem; }
+    .tag { display: inline-block; border: 1px solid #cfd8e3; border-radius: 8px; padding: 0.18rem 0.5rem; margin: 0.12rem; background: #f7fafc; color: #263548; }
+    .summary-card { border: 1px solid #dbe3ee; border-radius: 8px; padding: 0.72rem 0.8rem; background: #ffffff; margin-bottom: 0.55rem; }
+    .summary-blue { border-color: #bfdbfe; background: #f8fbff; }
+    .summary-green { border-color: #bbf7d0; background: #f8fffb; }
+    .summary-title { color: #64748b; font-size: 0.84rem; margin-bottom: 0.25rem; }
+    .summary-body { color: #152238; line-height: 1.62; }
+    .source-note { color: #64748b; font-size: 0.88rem; line-height: 1.55; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -313,156 +498,196 @@ llm_status = get_llm_status()
 docs = list(st.session_state.get("docs", []))
 profile = dict(st.session_state.get("profile", {}))
 report = dict(st.session_state.get("report", {}))
+anchor_doc = profile.get("anchor_document") or next((doc.get("name") for doc in docs if doc.get("role") == "anchor"), "未选择")
+session_id = str(st.session_state.get("session_id", "")).strip()
+mode_tone = "blue" if llm_status.get("mode") == "Harness + LLM" else "yellow"
 
 st.markdown("<div class='hero-title'>ProjectPilot</div>", unsafe_allow_html=True)
 st.markdown("<div class='hero-subtitle'>通用项目材料理解与答辩生成助手</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='status-row'>"
+    + _status_pill("当前模式", _mode_text(llm_status["mode"]), mode_tone)
+    + _status_pill("当前模型", str(llm_status["model"]), "neutral")
+    + _status_pill("当前会话", session_id or "未创建", "neutral")
+    + _status_pill("当前主材料", str(anchor_doc), "green" if anchor_doc != "未选择" else "neutral")
+    + "</div>",
+    unsafe_allow_html=True,
+)
 
-top_a, top_b, top_c = st.columns([1.1, 1.1, 0.8])
-with top_a:
-    st.markdown(f"<div class='metric-band'><b>当前模式</b><br>{_mode_text(llm_status['mode'])}</div>", unsafe_allow_html=True)
-with top_b:
-    st.markdown(f"<div class='metric-band'><b>大模型</b><br>{llm_status['model']}</div>", unsafe_allow_html=True)
-with top_c:
-    anchor_doc = profile.get("anchor_document") or next((doc.get("name") for doc in docs if doc.get("role") == "anchor"), "未选择")
-    st.markdown(f"<div class='metric-band'><b>主材料</b><br>{anchor_doc}</div>", unsafe_allow_html=True)
-
-session_id = str(st.session_state.get("session_id", "")).strip()
-st.caption(f"当前会话 ID：{session_id or '未创建'}")
-
-upload_left, upload_right = st.columns(2)
+_section_title("Step 1", "上传材料", "先确定一个主材料，再按需补充 PPT、README、说明书或测试文档。")
+upload_left, upload_right = st.columns([1.15, 1])
 with upload_left:
-    st.subheader("主材料上传")
-    st.caption("请上传一个主材料文件，系统将优先围绕该文件理解项目。")
-    anchor_upload = st.file_uploader(
-        "主材料文件（必填）",
-        type=ALLOWED_TYPES,
-        accept_multiple_files=False,
-        key="anchor_uploader",
-    )
+    with st.container(border=True):
+        st.markdown(
+            "<div class='anchor-accent'><div class='upload-title'>主材料上传（必填）</div>"
+            "<div class='upload-desc'>上传一个最能代表项目全貌的文件，系统将优先围绕它理解项目。</div></div>",
+            unsafe_allow_html=True,
+        )
+        anchor_upload = st.file_uploader(
+            "选择主材料文件",
+            type=ALLOWED_TYPES,
+            accept_multiple_files=False,
+            key="anchor_uploader",
+            label_visibility="collapsed",
+        )
+        if anchor_upload is not None:
+            _file_card(anchor_upload.name, "待保存为本次会话的主依据")
+        elif anchor_doc != "未选择":
+            _file_card(str(anchor_doc), "当前会话主材料")
+        else:
+            st.info("请先上传一个主材料文件。")
+        st.caption("稳定支持：txt / md / pdf / docx / pptx；兼容支持：doc / ppt。")
 
 with upload_right:
-    st.subheader("补充材料上传")
-    st.caption("可上传其他补充材料，如 PPT、说明书、README、测试文档等。")
-    supporting_uploads = st.file_uploader(
-        "补充材料（可选，多文件）",
-        type=ALLOWED_TYPES,
-        accept_multiple_files=True,
-        key="supporting_uploader",
-    )
-
-actions = st.columns([1, 1, 1, 1, 2])
-with actions[0]:
-    if st.button("保存上传并抽取", width="stretch"):
-        if anchor_upload is None:
-            st.error("请先上传一个主材料文件。")
+    with st.container(border=True):
+        st.markdown(
+            "<div class='supporting-accent'><div class='upload-title'>补充材料上传（可选）</div>"
+            "<div class='upload-desc'>可上传 PPT、README、说明书、测试文档等增强结果质量。</div></div>",
+            unsafe_allow_html=True,
+        )
+        supporting_uploads = st.file_uploader(
+            "选择补充材料",
+            type=ALLOWED_TYPES,
+            accept_multiple_files=True,
+            key="supporting_uploader",
+            label_visibility="collapsed",
+        )
+        if supporting_uploads:
+            for uploaded_file in supporting_uploads[:5]:
+                _file_card(uploaded_file.name, "待保存为补充证据")
+            if len(supporting_uploads) > 5:
+                st.caption(f"还有 {len(supporting_uploads) - 5} 个文件将在保存时一并处理。")
         else:
-            manifest = _save_current_uploads(anchor_upload, list(supporting_uploads or []))
-            st.session_state["profile"] = run_extract(_active_root())
-            st.session_state["report"] = run_verify(_active_root())
-            _refresh_docs_from_disk()
-            _hide_generated_outputs()
-            st.success(f"已保存主材料：{manifest['anchor_document'] if manifest else ''}")
-            st.rerun()
-with actions[1]:
-    if st.button("抽取", width="stretch"):
-        profile_result = _extract_current_materials(anchor_upload, list(supporting_uploads or []))
-        if profile_result is not None:
-            st.session_state["report"] = run_verify(_active_root())
-            _hide_generated_outputs()
-            st.rerun()
-with actions[2]:
-    if st.button("校验", width="stretch"):
-        if anchor_upload is not None:
-            _extract_current_materials(anchor_upload, list(supporting_uploads or []))
-        elif not _has_raw_files():
-            st.error("请先上传一个主材料文件。")
-        else:
-            st.session_state["profile"] = run_extract(_active_root())
-            _refresh_docs_from_disk()
-        if _has_raw_files():
-            st.session_state["report"] = run_verify(_active_root())
-            st.rerun()
-with actions[3]:
-    if st.button("生成全部", width="stretch"):
-        profile_result = _extract_current_materials(anchor_upload, list(supporting_uploads or []))
-        if profile_result is None:
-            st.stop()
-        st.session_state["report"] = run_verify(_active_root())
-        for task_name in ("intro", "innovation", "defense", "readme"):
-            run_generate(_active_root(), task_name)
-        st.session_state["report"] = run_verify(_active_root())
-        st.session_state["profile"] = _read_json(_active_processed_dir() / "profile.json")
-        _refresh_docs_from_disk()
-        st.session_state["visible_tasks"] = list(TASK_NAMES)
-        st.success("四类产物已生成。")
-        st.rerun()
-with actions[4]:
-    if st.button("清空页面", width="stretch"):
-        st.session_state["profile"] = {}
-        st.session_state["report"] = {}
-        st.session_state["docs"] = []
-        st.session_state["visible_tasks"] = []
-        st.session_state["session_id"] = ""
-        st.rerun()
-    if st.button("重置 Demo 示例", width="stretch"):
-        _write_demo_materials()
-        st.success("已创建新的 Demo 会话。")
-        st.rerun()
+            supporting_docs = profile.get("supporting_documents", [])
+            if supporting_docs:
+                for file_name in supporting_docs[:5]:
+                    _file_card(str(file_name), "当前会话补充材料")
+            else:
+                st.caption("没有补充材料也可以运行。")
+        st.caption("补充材料只增强证据，冲突时默认以主材料为准。")
 
-main_col, side_col = st.columns([1.45, 1])
+_section_title("Step 2", "解析与操作", "保存材料、运行校验，或一次性生成全部交付物。")
+with st.container(border=True):
+    action_cols = st.columns([1.35, 1, 1, 0.9, 0.95])
+    with action_cols[0]:
+        if st.button("生成全部", type="primary", width="stretch"):
+            profile_result = _extract_current_materials(anchor_upload, list(supporting_uploads or []))
+            if profile_result is None:
+                st.stop()
+            st.session_state["report"] = run_verify(_active_root())
+            for task_name in ("intro", "innovation", "defense", "readme"):
+                run_generate(_active_root(), task_name)
+            st.session_state["report"] = run_verify(_active_root())
+            st.session_state["profile"] = _read_json(_active_processed_dir() / "profile.json")
+            _refresh_docs_from_disk()
+            st.session_state["visible_tasks"] = list(TASK_NAMES)
+            st.success("四类产物已生成。")
+            st.rerun()
+    with action_cols[1]:
+        if st.button("保存上传并抽取", width="stretch"):
+            if anchor_upload is None:
+                st.error("请先上传一个主材料文件。")
+            else:
+                manifest = _save_current_uploads(anchor_upload, list(supporting_uploads or []))
+                st.session_state["profile"] = run_extract(_active_root())
+                st.session_state["report"] = run_verify(_active_root())
+                _refresh_docs_from_disk()
+                _hide_generated_outputs()
+                st.success(f"已保存主材料：{manifest['anchor_document'] if manifest else ''}")
+                st.rerun()
+    with action_cols[2]:
+        if st.button("运行校验", width="stretch"):
+            if anchor_upload is not None:
+                _extract_current_materials(anchor_upload, list(supporting_uploads or []))
+            elif not _has_raw_files():
+                st.error("请先上传一个主材料文件。")
+            else:
+                st.session_state["profile"] = run_extract(_active_root())
+                _refresh_docs_from_disk()
+            if _has_raw_files():
+                st.session_state["report"] = run_verify(_active_root())
+                st.rerun()
+    with action_cols[3]:
+        if st.button("清空当前会话", width="stretch"):
+            st.session_state["profile"] = {}
+            st.session_state["report"] = {}
+            st.session_state["docs"] = []
+            st.session_state["visible_tasks"] = []
+            st.session_state["session_id"] = ""
+            st.rerun()
+    with action_cols[4]:
+        if st.button("重置 Demo 示例", width="stretch"):
+            _write_demo_materials()
+            st.success("已创建新的 Demo 会话。")
+            st.rerun()
+
+_section_title("Step 3", "结果展示", "左侧查看项目画像，右侧查看校验状态和生成结果。")
+main_col, side_col = st.columns([1.05, 1.2])
 
 with main_col:
-    st.subheader("项目画像")
+    with st.container(border=True):
+        st.markdown("#### 项目画像")
+        if profile:
+            st.markdown(f"**{profile.get('project_name') or '未识别项目名称'}**")
+            st.caption(profile.get("project_type") or "未识别项目类型")
+            metric_a, metric_b = st.columns(2)
+            with metric_a:
+                st.metric("主材料", profile.get("anchor_document") or "暂无")
+            with metric_b:
+                st.metric("补充材料数", len(profile.get("supporting_documents", [])))
+
+            _render_profile_summary_card("背景摘要", "background_summary", "background_candidates", profile, "blue")
+            _render_profile_summary_card("痛点摘要", "pain_points_summary", "pain_point_candidates", profile)
+            _render_profile_summary_card("创新点摘要", "innovation_summary", "innovation_candidates", profile, "green")
+
+            st.markdown("**核心技术**")
+            _badge_list(_compact_list(profile.get("core_technologies"), 18))
+            st.markdown("**系统模块**")
+            _badge_list(_compact_list(profile.get("system_modules"), 18))
+
+            detail_a, detail_b = st.columns(2)
+            with detail_a:
+                _render_profile_summary_card("交付物", "deliverables_summary", "deliverable_candidates", profile)
+            with detail_b:
+                _render_profile_summary_card("局限性", "limitations_summary", "limitation_candidates", profile)
+        else:
+            st.info("上传主材料后点击“保存上传并抽取”，或点击“重置 Demo 示例”创建一个干净示例会话。")
+
     if docs:
-        st.dataframe(_doc_table(docs), width="stretch", hide_index=True)
-
-    if profile:
-        a, b = st.columns(2)
-        with a:
-            st.markdown("**项目名称**")
-            st.write(profile.get("project_name") or "未识别")
-            st.markdown("**项目类型**")
-            st.write(profile.get("project_type") or "未识别")
-            st.markdown("**背景摘要**")
-            st.write(profile.get("background") or "暂无")
-            st.markdown("**痛点摘要**")
-            st.write(profile.get("pain_points") or "暂无")
-        with b:
-            st.markdown("**主材料文件**")
-            st.write(profile.get("anchor_document") or "暂无")
-            st.markdown("**补充材料文件**")
-            supporting_docs = profile.get("supporting_documents", [])
-            st.write("、".join(supporting_docs) if supporting_docs else "无")
-            st.markdown("**交付成果**")
-            st.write(profile.get("deliverables") or "暂无")
-            st.markdown("**限制与不足**")
-            st.write(profile.get("limitations") or "暂无")
-
-        st.markdown("**核心技术标签**")
-        _badge_list(list(profile.get("core_technologies", [])))
-        st.markdown("**系统模块标签**")
-        _badge_list(list(profile.get("system_modules", [])))
-        st.markdown("**创新点摘要**")
-        st.write(profile.get("innovation_points") or "暂无")
-    else:
-        st.info("上传主材料后点击“保存上传并抽取”，或点击“重置 Demo 示例”创建一个干净示例会话。")
+        with st.expander("查看解析文件列表", expanded=False):
+            st.dataframe(_doc_table(docs), width="stretch", hide_index=True)
 
 with side_col:
-    st.subheader("结果与校验")
-    if report:
-        status_text = "通过" if report.get("passed") else "需关注"
-        st.metric("校验状态", status_text)
-        st.write(f"警告：{len(report.get('warnings', []))} | 提示：{len(report.get('infos', []))}")
-        for warning in report.get("warnings", [])[:5]:
-            st.warning(warning)
-        for info in report.get("infos", [])[:5]:
-            st.success(info)
-    else:
-        st.caption("尚未生成校验报告。")
+    with st.container(border=True):
+        st.markdown("#### 校验状态")
+        if report:
+            warn_count = len(report.get("warnings", []))
+            info_count = len(report.get("infos", []))
+            if report.get("passed"):
+                st.success("校验通过")
+            else:
+                st.warning("校验存在警告")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("状态", "通过" if report.get("passed") else "需关注")
+            m2.metric("警告", warn_count)
+            m3.metric("提示", info_count)
+            st.caption(_report_one_liner(report))
+            for warning in report.get("warnings", [])[:3]:
+                st.warning(warning)
+            if not report.get("warnings"):
+                for info in report.get("infos", [])[:2]:
+                    st.info(info)
+        else:
+            st.info("尚未生成校验报告。")
 
     tabs = st.tabs([TASK_LABELS[task_name] for task_name in TASK_NAMES])
     for tab, task_name in zip(tabs, TASK_NAMES):
         with tab:
+            content, meta, _ = _visible_task_content(task_name)
+            warnings = list((meta.get("final_verify_report") or {}).get("warnings", [])) if meta else []
+            if warnings:
+                st.warning("当前产物存在校验提示：" + "；".join(str(item) for item in warnings[:2]))
+
             if st.button(f"生成{TASK_LABELS[task_name]}", key=f"generate_{task_name}", width="stretch"):
                 profile_result = _extract_current_materials(anchor_upload, list(supporting_uploads or []))
                 if profile_result is None:
@@ -474,21 +699,54 @@ with side_col:
                 _refresh_docs_from_disk()
                 _show_task(task_name)
                 st.rerun()
-            task_visible = task_name in st.session_state.get("visible_tasks", [])
-            content = _read_text(_active_outputs_dir() / f"{task_name}.md") if task_visible else ""
-            meta = _read_json(_active_outputs_dir() / f"{task_name}_meta.json") if task_visible else {}
+
             if content:
-                st.markdown(content)
+                with st.container(border=True):
+                    st.markdown(content)
             else:
-                st.caption("暂无输出。")
+                st.info("暂无输出。可点击本页签内按钮单独生成，或在 Step 2 点击“生成全部”。")
+
             if meta:
-                st.markdown("**使用来源**")
-                st.write("、".join(meta.get("used_sources", [])) or "暂无")
-                st.markdown("**来源角色**")
-                st.write(_role_text(list(meta.get("used_roles", []))))
-                st.markdown("**生成模式**")
-                st.write(_mode_text(meta.get("generation_mode") or meta.get("mode") or "未知"))
-                st.markdown("**重试修复**")
-                st.write("已发生" if meta.get("retry_used") or meta.get("retry_applied") else "未发生")
+                source_col, mode_col = st.columns([1.25, 0.75])
+                with source_col:
+                    st.markdown("**使用来源**")
+                    st.markdown(
+                        f"<div class='source-note'>{html.escape('、'.join(meta.get('used_sources', [])) or '暂无')}</div>",
+                        unsafe_allow_html=True,
+                    )
+                with mode_col:
+                    st.markdown("**生成信息**")
+                    st.caption(f"模式：{_mode_text(str(meta.get('generation_mode') or meta.get('mode') or '未知'))}")
+                    st.caption("重试修复：已发生" if meta.get("retry_used") or meta.get("retry_applied") else "重试修复：未发生")
+                    st.caption(f"来源角色：{_role_text(list(meta.get('used_roles', [])))}")
+
+_section_title("Evidence", "证据与来源", "展示当前产物背后的 anchor / supporting 来源、证据数量和追踪文件。")
+latest_task = _latest_visible_task()
+evidence_info = _evidence_summary(latest_task, profile)
+with st.container(border=True):
+    if not latest_task or not evidence_info:
+        st.info("生成任一产物后，这里会显示证据链摘要。")
+    else:
+        st.markdown(f"**当前查看任务：{TASK_LABELS.get(latest_task, latest_task)}**")
+        ev_a, ev_b, ev_c, ev_d = st.columns(4)
+        ev_a.metric("主材料来源", evidence_info.get("anchor_document", "暂无"))
+        ev_b.metric("证据块数量", len(evidence_info.get("chunks", [])))
+        ev_c.metric("生成模式", evidence_info.get("mode", "未知"))
+        ev_d.metric("重试修复", "已发生" if evidence_info.get("retry") else "未发生")
+
+        st.markdown("**Anchor 来源**")
+        _badge_list(evidence_info.get("anchor_sources", []) or [evidence_info.get("anchor_document", "暂无")], 8)
+        st.markdown("**Supporting 来源**")
+        supporting_sources = evidence_info.get("supporting_sources", [])
+        if supporting_sources:
+            _badge_list(supporting_sources, 12)
+        else:
+            st.caption("当前任务未使用补充来源，或尚未检索到补充证据。")
+
+        paths = evidence_info.get("paths", {})
+        if paths:
+            with st.expander("查看产物路径", expanded=False):
+                for label, path in paths.items():
+                    st.caption(f"{label}: {path}")
 
 st.caption(f"支持格式：{', '.join(sorted(ext.lstrip('.') for ext in SUPPORTED_EXTS))}。旧版 doc / ppt 为兼容支持，依赖本地转换环境。")

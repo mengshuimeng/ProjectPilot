@@ -28,6 +28,83 @@ GENERIC_FIELD_KEYWORDS = {
     "future_work": ["未来", "后续", "展望", "优化方向", "改进方向", "future work", "roadmap"],
 }
 
+DISPLAY_FIELD_RULES = {
+    "background_summary": {
+        "candidate_key": "background_candidates",
+        "profile_field": "background",
+        "positive": ["背景", "研究背景", "项目背景", "应用背景", "引言", "研究意义", "发展现状", "背景信息", "面向", "场景"],
+        "negative": ["创新", "优势", "经费", "成果形式", "预期成果", "指导教师", "联系电话", "学号", "申请人", "不足", "局限", "展望", "扩展设计", "项目验收后", "专利"],
+        "prefer_anchor": True,
+    },
+    "pain_points_summary": {
+        "candidate_key": "pain_point_candidates",
+        "profile_field": "pain_points",
+        "positive": [
+            "痛点",
+            "问题",
+            "挑战",
+            "难点",
+            "拟解决的关键问题",
+            "遮挡",
+            "光照",
+            "干扰",
+            "噪声",
+            "复杂场景",
+            "精度不足",
+            "分辨率低",
+            "跨摄像头",
+            "鲁棒性",
+            "脱节",
+            "不及时",
+            "效率低",
+            "一致性差",
+            "漏检",
+            "节拍",
+        ],
+        "negative": ["研究意义", "项目简介", "创新", "优势", "经费", "成果形式", "申请人", "团队成员", "竞品分析", "方案类型", "重点将"],
+        "prefer_anchor": True,
+    },
+    "innovation_summary": {
+        "candidate_key": "innovation_candidates",
+        "profile_field": "innovation_points",
+        "positive": ["创新", "创新点", "改进", "优化", "提出", "特色", "优势", "相比", "提升", "方法设计", "技术亮点", "联动", "闭环", "云边协同", "多模态", "行为树"],
+        "negative": ["附件", "经费", "预算", "联系电话", "学号", "指导教师", "申请书封面", "申请人", "重点将", "关键问题"],
+        "prefer_anchor": True,
+    },
+    "deliverables_summary": {
+        "candidate_key": "deliverable_candidates",
+        "profile_field": "deliverables",
+        "positive": ["预期成果", "研究成果和形式", "交付物", "成果形式", "作品", "系统", "软件", "专利", "软著", "论文", "投稿", "平台", "原型"],
+        "negative": ["研究背景", "挑战", "引言", "算法细节", "数据增强", "训练过程", "Backbone", "Neck", "Head", "作品/方案名称", "团队编号", "竞赛团队信息"],
+        "prefer_anchor": True,
+    },
+    "limitations_summary": {
+        "candidate_key": "limitation_candidates",
+        "profile_field": "limitations",
+        "positive": ["不足", "局限", "限制", "存在的问题", "后续", "未来工作", "展望", "待改进", "仍需优化", "尚未解决"],
+        "negative": ["研究意义", "项目简介", "经费", "申请人", "团队成员", "成果形式"],
+        "prefer_anchor": False,
+    },
+}
+
+DISPLAY_FIELD_ORDER = [
+    "background_summary",
+    "pain_points_summary",
+    "innovation_summary",
+    "deliverables_summary",
+    "limitations_summary",
+]
+
+DISPLAY_PLACEHOLDERS = {
+    "background_summary": "当前材料中未提取到高质量内容，待补充",
+    "pain_points_summary": "当前材料中未提取到高质量内容，待补充",
+    "innovation_summary": "当前材料中未提取到高质量内容，待补充",
+    "deliverables_summary": "当前材料中未明确给出交付物描述，待补充",
+    "limitations_summary": "当前材料中未明确给出局限性描述，待补充",
+}
+
+TRAINING_DETAIL_TERMS = ["Backbone", "Neck", "Head", "TriHard", "Batch Size", "数据增强", "训练过程", "学习率", "epoch"]
+
 TECH_VOCAB = [
     "Python",
     "Java",
@@ -99,6 +176,12 @@ NOISE_PATTERNS = [
     r"^\s*[-=]{3,}\s*$",
     r"^\s*[A-Za-z]?\s*=\s*.+",
     r"^\s*\(\s*\d+\s*\)\s*$",
+    r"^\s*附件\s*\d+",
+    r"联系电话|电子信箱|指导教师|申请人|学号",
+    r"经费预算|预算明细|经费表",
+    r"^\s*(摘要|关键词|作者|姓名)\s*[:：]?\s*$",
+    r"申请书封面",
+    r"竞赛团队信息|团队编号|组委会填写",
 ]
 
 
@@ -158,6 +241,8 @@ def is_noise_paragraph(paragraph: str) -> bool:
     if len(text) <= 20 and any(token in lower for token in ["copyright", "page"]):
         return True
     if len(text) > 30 and _symbol_digit_ratio(text) > 0.5:
+        return True
+    if len(text) <= 16 and text.strip("：: ") in {"摘要", "关键词", "作者", "姓名", "目录", "附件"}:
         return True
     return False
 
@@ -350,6 +435,223 @@ def summarize_candidate(paragraph: str, max_chars: int = 220) -> str:
     return summary or text[:max_chars].rstrip()
 
 
+def split_sentences(paragraph: str) -> list[str]:
+    text = strip_outline_markers(re.sub(r"^#+\s*", "", normalize_text(paragraph)))
+    text = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", text)
+    pieces = re.split(r"(?<=[。！？!?；;.])\s*", text)
+    sentences: list[str] = []
+    for piece in pieces:
+        sentence = normalize_text(piece).strip(" -•●○\t")
+        sentence = re.sub(r"^(?:[-*]\s*)?(?:\d+(?:\.\d+){0,3}|[一二三四五六七八九十]+)[、.)）]\s*", "", sentence)
+        sentence = re.sub(r"^核心技术创新点(?:创新点)?创新说明对主流程的价值", "", sentence)
+        sentence = re.sub(r"^作品详情/解决方案详情[一二三四五六七八九十、\s]*", "", sentence)
+        sentence = re.sub(r"^产教融合5G\+创新应用赛(?:设计方案)?", "", sentence)
+        sentence = re.sub(r"^第十三届大学生新一代信息通信科技大赛.*?作品/方案名称", "作品/方案名称", sentence)
+        sentence = re.sub(r"^作品/方案名称[^。；，]*?(?=面向)", "", sentence)
+        sentence = sentence.strip()
+        if not sentence or len(sentence) < 12:
+            continue
+        if len(sentence) > 240:
+            sentence = summarize_candidate(sentence, max_chars=220)
+        if not is_noise_paragraph(sentence):
+            sentences.append(sentence)
+    return list(dict.fromkeys(sentences))
+
+
+def _token_set(text: str) -> set[str]:
+    tokens = set(re.findall(r"[A-Za-z][A-Za-z0-9.+#-]{1,}|[\u4e00-\u9fff]{2,}", normalize_text(text)))
+    if len(tokens) < 3:
+        compact = re.sub(r"\s+", "", text)
+        tokens.update(compact[index : index + 2] for index in range(max(0, len(compact) - 1)))
+    return {token.lower() for token in tokens if token.strip()}
+
+
+def _jaccard_similarity(left: str, right: str) -> float:
+    left_tokens = _token_set(left)
+    right_tokens = _token_set(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+
+
+def _is_similar_to_any(text: str, selected_texts: list[str], threshold: float = 0.6) -> bool:
+    return any(_jaccard_similarity(text, selected) > threshold for selected in selected_texts)
+
+
+def _keyword_hits(text: str, keywords: list[str]) -> int:
+    lower = text.lower()
+    return sum(lower.count(keyword.lower()) for keyword in keywords)
+
+
+def _summary_source_bonus(summary_field: str, source: str, role: str) -> float:
+    source_lower = source.lower()
+    if role == "anchor":
+        return 3.0
+    if summary_field == "background_summary" and any(token in source_lower for token in ["readme", "notes", "说明"]):
+        return 1.0
+    if summary_field == "limitations_summary" and any(token in source_lower for token in ["summary", "总结", "展望", "notes", "readme"]):
+        return 1.6
+    if summary_field == "innovation_summary" and any(token in source_lower for token in ["ppt", "outline", "readme", "notes"]):
+        return 0.8
+    return 0.0
+
+
+def _score_display_sentence(summary_field: str, sentence: str, context: str, source: str, role: str) -> float:
+    rules = DISPLAY_FIELD_RULES[summary_field]
+    scoring_text = f"{context[:90]} {sentence}"
+    positive_hits = _keyword_hits(sentence, list(rules["positive"]))
+    section_hits = _keyword_hits(context[:90], list(rules["positive"]))
+    negative_hits = _keyword_hits(scoring_text, list(rules["negative"]))
+
+    if summary_field == "deliverables_summary":
+        strong_markers = ["预期成果", "研究成果和形式", "交付物", "成果形式", "产出", "专利", "软著", "论文", "投稿", "原型", "演示视频", "README", "项目验收后", "交付"]
+        if not any(marker in scoring_text for marker in strong_markers):
+            return 0.0
+        weak_architecture_markers = ["架构", "任务链", "技术目标", "流程", "部署", "训练", "模型", "识别与定位"]
+        if any(marker in sentence for marker in weak_architecture_markers) and not any(
+            marker in sentence for marker in ["预期成果", "交付物", "成果形式", "产出", "专利", "软著", "论文", "投稿", "原型", "演示视频", "README"]
+        ):
+            return 0.0
+
+    if summary_field == "limitations_summary":
+        strong_markers = ["不足", "局限", "限制", "存在的问题", "未来工作", "展望", "待改进", "仍需优化", "尚未解决"]
+        followup_is_improvement = "后续" in sentence and any(marker in sentence for marker in ["优化", "完善", "改进", "扩展", "接入"])
+        if not any(marker in sentence for marker in strong_markers) and not followup_is_improvement:
+            return 0.0
+
+    if positive_hits <= 0:
+        if section_hits <= 0 or summary_field in {"limitations_summary", "deliverables_summary"}:
+            return 0.0
+        positive_hits = 1
+
+    score = positive_hits * 2.0 + min(section_hits, 2) * 0.5 - negative_hits * 2.4 + _summary_source_bonus(summary_field, source, role)
+    if bool(rules.get("prefer_anchor")) and role == "anchor":
+        score += 1.2
+    if not bool(rules.get("prefer_anchor")) and role == "supporting":
+        score += 0.9
+
+    if summary_field == "deliverables_summary" and _keyword_hits(sentence, TRAINING_DETAIL_TERMS) >= 2:
+        score -= 4.0
+    if summary_field == "deliverables_summary":
+        if any(marker in sentence for marker in ["项目验收后", "形成", "完成", "提交", "开源", "专利", "软著", "论文", "演示视频", "README"]):
+            score += 5.0
+        if any(marker in sentence for marker in ["作品/方案名称", "竞赛团队信息", "团队编号", "邮箱", "组委会填写"]):
+            score -= 8.0
+    if summary_field == "innovation_summary" and any(marker in sentence for marker in ["关键指标", "验收口径", "指标类别", "项目标值", "申请书封面", "产教融合"]):
+        score -= 8.0
+    if summary_field == "pain_points_summary" and any(marker in sentence for marker in ["项目验收后", "专利", "软著", "论文", "开源", "成果"]):
+        score -= 6.0
+    if summary_field == "pain_points_summary" and any(marker in sentence for marker in ["保持较高", "达到", "不低于", "控制在"]) and not any(
+        marker in sentence for marker in ["不足", "低", "难", "差", "干扰", "脱节", "不及时", "漏检"]
+    ):
+        score -= 8.0
+    if summary_field == "limitations_summary" and any(marker in sentence for marker in ["推广潜力", "教学复用价值", "验收", "可触发"]):
+        score -= 7.0
+    if len(sentence) < 18:
+        score -= 0.5
+    if len(sentence) > 180:
+        score -= 4.0
+    return score
+
+
+def collect_display_field_candidates(docs: list[dict[str, Any]], summary_field: str, limit: int = 12) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for doc in docs:
+        source = str(doc.get("name", ""))
+        role = str(doc.get("role", "supporting"))
+        for paragraph in split_paragraphs(str(doc.get("text", ""))):
+            clean_paragraph = normalize_text(paragraph)
+            if is_noise_paragraph(clean_paragraph):
+                continue
+            for sentence in split_sentences(clean_paragraph):
+                score = _score_display_sentence(summary_field, sentence, clean_paragraph[:260], source, role)
+                if score <= 0:
+                    continue
+                candidates.append(
+                    {
+                        "source": source,
+                        "role": role,
+                        "text": sentence,
+                        "score": round(score, 3),
+                    }
+                )
+
+    candidates.sort(key=lambda item: (float(item["score"]), item.get("role") == "anchor", -len(str(item["text"]))), reverse=True)
+    selected: list[dict[str, Any]] = []
+    seen_texts: list[str] = []
+    for candidate in candidates:
+        text = str(candidate.get("text", ""))
+        if _is_similar_to_any(text, seen_texts, threshold=0.72):
+            continue
+        selected.append(candidate)
+        seen_texts.append(text)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _compose_summary_from_candidates(
+    candidates: list[dict[str, Any]],
+    selected_global: list[str],
+    placeholder: str,
+    max_sentences: int = 2,
+    max_chars: int = 180,
+) -> tuple[str, list[dict[str, Any]]]:
+    selected: list[dict[str, Any]] = []
+    local_texts: list[str] = []
+    for candidate in candidates:
+        text = str(candidate.get("text", "")).strip()
+        if not text or is_noise_paragraph(text):
+            continue
+        if _is_similar_to_any(text, selected_global, threshold=0.6):
+            continue
+        if _is_similar_to_any(text, local_texts, threshold=0.68):
+            continue
+        selected.append(candidate)
+        local_texts.append(text)
+        if len(selected) >= max_sentences:
+            break
+
+    if not selected:
+        return placeholder, []
+
+    summary = ""
+    used: list[dict[str, Any]] = []
+    for item in selected:
+        text = str(item.get("text", "")).strip()
+        candidate_summary = (summary + text).strip()
+        if len(candidate_summary) > max_chars and summary:
+            break
+        if len(text) > max_chars and not summary:
+            text = summarize_candidate(text, max_chars=max_chars)
+        summary += text
+        used.append(item)
+
+    summary = normalize_text(summary).rstrip("；;，,")
+    if len(summary) > max_chars:
+        end = summary.rfind("。", 0, max_chars)
+        summary = summary[: end + 1] if end >= 40 else summary[:max_chars].rstrip("；;，,")
+    selected_global.extend(str(item.get("text", "")) for item in used)
+    return summary or placeholder, used
+
+
+def build_display_summaries_from_candidates(
+    candidates_by_field: dict[str, list[dict[str, Any]]],
+) -> tuple[dict[str, str], dict[str, list[dict[str, Any]]]]:
+    summaries: dict[str, str] = {}
+    summary_sources: dict[str, list[dict[str, Any]]] = {}
+    selected_global: list[str] = []
+    for summary_field in DISPLAY_FIELD_ORDER:
+        summary, used = _compose_summary_from_candidates(
+            candidates_by_field.get(DISPLAY_FIELD_RULES[summary_field]["candidate_key"], []),
+            selected_global,
+            DISPLAY_PLACEHOLDERS[summary_field],
+        )
+        summaries[summary_field] = summary
+        summary_sources[summary_field] = used
+    return summaries, summary_sources
+
+
 def _role_weight(role: str) -> float:
     return 3.0 if role == "anchor" else 1.0
 
@@ -458,25 +760,35 @@ def build_profile(docs: list[dict[str, Any]]) -> dict[str, Any]:
         field_sources[field] = snippets
         field_values[field] = _join_snippets(snippets)
 
+    field_candidates: dict[str, list[dict[str, Any]]] = {}
+    for summary_field in DISPLAY_FIELD_ORDER:
+        candidate_key = str(DISPLAY_FIELD_RULES[summary_field]["candidate_key"])
+        field_candidates[candidate_key] = collect_display_field_candidates(prepared_docs, summary_field)
+    display_summaries, display_summary_sources = build_display_summaries_from_candidates(field_candidates)
+
     profile: dict[str, Any] = {
         "anchor_document": anchor_docs[0].get("name", "") if anchor_docs else "",
         "supporting_documents": [doc.get("name", "") for doc in supporting_docs],
         "source_roles": {doc.get("name", ""): doc.get("role", "supporting") for doc in prepared_docs},
         "project_name": project_name,
         "project_type": infer_project_type(prepared_docs),
-        "background": field_values.get("background", ""),
-        "pain_points": field_values.get("pain_points", ""),
+        "background": display_summaries.get("background_summary", field_values.get("background", "")),
+        "pain_points": display_summaries.get("pain_points_summary", field_values.get("pain_points", "")),
         "target_users": field_values.get("target_users", ""),
         "core_technologies": extract_technologies(prepared_docs),
         "system_architecture": field_values.get("system_architecture", ""),
         "system_modules": extract_modules(prepared_docs),
-        "innovation_points": field_values.get("innovation_points", ""),
+        "innovation_points": display_summaries.get("innovation_summary", field_values.get("innovation_points", "")),
         "experiment_results": field_values.get("experiment_results", ""),
-        "deliverables": field_values.get("deliverables", ""),
-        "limitations": field_values.get("limitations", ""),
+        "deliverables": display_summaries.get("deliverables_summary", field_values.get("deliverables", "")),
+        "limitations": display_summaries.get("limitations_summary", field_values.get("limitations", "")),
         "future_work": field_values.get("future_work", ""),
         "project_name_candidates": project_candidates,
         "field_sources": field_sources,
+        "field_candidates": field_candidates,
+        "display_summaries": display_summaries,
+        "display_summary_sources": display_summary_sources,
+        "raw_field_values": field_values,
         "doc_stats": [
             {
                 "name": doc.get("name", ""),
@@ -493,9 +805,11 @@ def build_profile(docs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
     # Compatibility keys for V1 commands, tests, and existing UI snippets.
-    profile["background_summary"] = profile["background"]
-    profile["pain_point_summary"] = profile["pain_points"]
-    profile["innovation_summary"] = profile["innovation_points"]
+    profile["background_summary"] = display_summaries.get("background_summary", profile["background"])
+    profile["pain_point_summary"] = display_summaries.get("pain_points_summary", profile["pain_points"])
+    profile["innovation_summary"] = display_summaries.get("innovation_summary", profile["innovation_points"])
+    profile["deliverables_summary"] = display_summaries.get("deliverables_summary", profile["deliverables"])
+    profile["limitations_summary"] = display_summaries.get("limitations_summary", profile["limitations"])
     profile["experiment_summary"] = profile["experiment_results"]
     profile["application_scenarios"] = profile["target_users"]
     profile["pain_point"] = profile["pain_points"]

@@ -473,6 +473,72 @@ $env:PROJECTPILOT_LLM_ENABLED="false"
 13 passed
 ```
 
+## 18. 项目画像字段重复污染修复
+
+后续又修复了“项目画像字段重复污染”问题。
+
+问题表现：
+
+- 背景摘要、痛点摘要、创新点摘要、交付物、局限性经常复用同一段原文。
+- 交付物有时会被误抽成算法训练细节。
+- 局限性有时直接复用痛点。
+- UI 默认展示 raw 字段，导致页面像信息墙。
+
+本次修复覆盖三层：
+
+- `app/extractor.py`
+  - 为背景、痛点、创新点、交付物、局限性建立字段专属候选池。
+  - 从段落级候选改为句子级候选。
+  - 增加跨字段互斥，避免同一句或高度相似句子被多个字段复用。
+  - 在 `profile.json` 中新增 `field_candidates`、`display_summaries` 和 `display_summary_sources`。
+
+- `app/generator.py`
+  - 新增 `build_display_summaries(profile)` 和 `compress_summary(...)`。
+  - fallback 生成优先使用 `display_summaries`，不再直接使用长段 raw 字段。
+  - 对交付物、局限性缺失场景使用“待补充”占位，而不是复制其他字段。
+
+- `app/verifier.py`
+  - 新增 `field_duplication`。
+  - 新增 `duplicated_field_pairs`。
+  - 新增 `summary_quality_warnings`。
+  - 检查背景/痛点、痛点/局限性、创新点/交付物、交付物/局限性之间的高度重复。
+  - 检查交付物是否混入 Backbone、TriHard、Batch Size、数据增强等训练细节。
+
+- `app/ui.py`
+  - 项目画像区域只展示 `profile["display_summaries"]`。
+  - 原始候选放入“来源”折叠区，不作为默认展示内容。
+
+新增回归测试：
+
+- `display_summaries` 必须存在。
+- 背景摘要和痛点摘要不能完全一样。
+- 局限性不能直接等于痛点。
+- 交付物不能明显包含大量训练细节术语。
+- 缺失高质量局限性时允许显示“待补充”。
+- verifier 能报告字段重复和摘要质量问题。
+
+当前测试结果已更新为：
+
+```text
+17 passed
+```
+
+## 19. docs 文档目录完善
+
+为方便提交作业、答辩讲解和后续维护，新增了完整的 `docs/` 文档目录：
+
+- `docs/README.md`
+- `docs/overview.md`
+- `docs/usage_guide.md`
+- `docs/architecture.md`
+- `docs/harness_design.md`
+- `docs/data_contracts.md`
+- `docs/quality_and_testing.md`
+- `docs/demo_guide.md`
+- `docs/roadmap.md`
+
+这些文档分别说明项目总览、使用方式、系统架构、Harness 设计、数据契约、质量控制、Demo 录屏路线和后续路线图。
+
 仍可以继续做的方向：
 
 - 加入 OCR 支持，提高扫描版 PDF 可用性。

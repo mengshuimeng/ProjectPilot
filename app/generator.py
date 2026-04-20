@@ -23,6 +23,22 @@ JSON_SCHEMA_HINT = {
     "notes": ["简要说明如何使用证据，或说明证据不足之处"],
 }
 
+DISPLAY_KEY_BY_PROFILE_FIELD = {
+    "background": "background_summary",
+    "pain_points": "pain_points_summary",
+    "innovation_points": "innovation_summary",
+    "deliverables": "deliverables_summary",
+    "limitations": "limitations_summary",
+}
+
+DISPLAY_FALLBACKS = {
+    "background_summary": "当前材料中未提取到高质量内容，待补充",
+    "pain_points_summary": "当前材料中未提取到高质量内容，待补充",
+    "innovation_summary": "当前材料中未提取到高质量内容，待补充",
+    "deliverables_summary": "当前材料中未明确给出交付物描述，待补充",
+    "limitations_summary": "当前材料中未明确给出局限性描述，待补充",
+}
+
 
 def _join_list(items: list[str], sep: str = "、") -> str:
     return sep.join(str(item) for item in items if str(item).strip()) or "待补充"
@@ -83,7 +99,104 @@ def _readable_text(value: Any) -> str:
     return text
 
 
+def _sentence_tokens(text: str) -> set[str]:
+    tokens = set(re.findall(r"[A-Za-z][A-Za-z0-9.+#-]{1,}|[\u4e00-\u9fff]{2,}", normalize_text(text)))
+    compact = re.sub(r"\s+", "", text)
+    if len(tokens) < 3:
+        tokens.update(compact[index : index + 2] for index in range(max(0, len(compact) - 1)))
+    return {token.lower() for token in tokens if token.strip()}
+
+
+def _similarity(left: str, right: str) -> float:
+    left_tokens = _sentence_tokens(left)
+    right_tokens = _sentence_tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+
+
+def _too_similar(text: str, selected: list[str], threshold: float = 0.6) -> bool:
+    return any(_similarity(text, item) > threshold for item in selected)
+
+
+def compress_summary(sentences: Any, max_sentences: int = 2, max_chars: int = 180) -> str:
+    if isinstance(sentences, str):
+        raw_sentences = re.split(r"(?<=[。！？!?；;])\s*", sentences)
+    elif isinstance(sentences, list):
+        raw_sentences = [str(item.get("text", "")) if isinstance(item, dict) else str(item) for item in sentences]
+    else:
+        raw_sentences = []
+
+    selected: list[str] = []
+    for raw_sentence in raw_sentences:
+        sentence = _readable_text(raw_sentence).strip("；;，,。 ")
+        if not sentence or is_noise_paragraph(sentence):
+            continue
+        if _too_similar(sentence, selected, threshold=0.68):
+            continue
+        if len(sentence) > max_chars:
+            sentence = _safe_summary(sentence, "", max_chars=max_chars)
+        candidate = "。".join(selected + [sentence]).strip("。")
+        if len(candidate) > max_chars and selected:
+            break
+        selected.append(sentence)
+        if len(selected) >= max_sentences:
+            break
+
+    if not selected:
+        return ""
+    summary = "。".join(sentence.rstrip("。") for sentence in selected).strip()
+    if summary and not re.search(r"[。！？!?]$", summary):
+        summary += "。"
+    if len(summary) > max_chars:
+        summary = _safe_summary(summary, "", max_chars=max_chars)
+    return summary
+
+
+def build_display_summaries(profile: dict[str, Any]) -> dict[str, str]:
+    existing = dict(profile.get("display_summaries") or {})
+    candidates = dict(profile.get("field_candidates") or {})
+    candidate_keys = {
+        "background_summary": "background_candidates",
+        "pain_points_summary": "pain_point_candidates",
+        "innovation_summary": "innovation_candidates",
+        "deliverables_summary": "deliverable_candidates",
+        "limitations_summary": "limitation_candidates",
+    }
+    raw_fallback_keys = {
+        "background_summary": "background",
+        "pain_points_summary": "pain_points",
+        "innovation_summary": "innovation_points",
+        "deliverables_summary": "deliverables",
+        "limitations_summary": "limitations",
+    }
+
+    summaries: dict[str, str] = {}
+    selected_texts: list[str] = []
+    for summary_key, candidate_key in candidate_keys.items():
+        text = compress_summary(existing.get(summary_key, ""), max_sentences=2, max_chars=180)
+        if not text:
+            text = compress_summary(candidates.get(candidate_key, []), max_sentences=2, max_chars=180)
+        if not text and summary_key not in {"deliverables_summary", "limitations_summary"}:
+            text = compress_summary(profile.get(raw_fallback_keys[summary_key], ""), max_sentences=2, max_chars=180)
+        if text and _too_similar(text, selected_texts, threshold=0.6):
+            text = ""
+        if not text:
+            text = DISPLAY_FALLBACKS[summary_key]
+        summaries[summary_key] = text
+        if "待补充" not in text:
+            selected_texts.append(text)
+    return summaries
+
+
 def _field(profile: dict[str, Any], key: str, default: str, max_chars: int = 180) -> str:
+    summary_key = DISPLAY_KEY_BY_PROFILE_FIELD.get(key)
+    if summary_key:
+        display_text = build_display_summaries(profile).get(summary_key, "")
+        if display_text and "待补充" not in display_text:
+            return _safe_summary(_readable_text(display_text), default, max_chars=max_chars)
+        if key in {"deliverables", "limitations"}:
+            return display_text or default
     return _safe_summary(_readable_text(profile.get(key, "")), default, max_chars=max_chars)
 
 
@@ -170,6 +283,7 @@ def _profile_for_prompt(profile: dict[str, Any]) -> dict[str, Any]:
         "deliverables",
         "limitations",
         "future_work",
+        "display_summaries",
     ]
     return {key: profile.get(key) for key in keys}
 
