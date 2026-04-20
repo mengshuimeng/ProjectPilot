@@ -125,10 +125,19 @@ streamlit run app/ui.py
 
 ## MCP server 使用
 
-启动 stdio MCP server：
+检查 MCP server：
 
 ```powershell
-python -m app.mcp_server
+python -m app.mcp_server --check
+```
+
+给 MCP 客户端配置 stdio server 时使用：
+
+```json
+{
+  "command": "python",
+  "args": ["-m", "app.mcp_server", "--stdio"]
+}
 ```
 
 该 server 面向支持 MCP 的客户端暴露 ProjectPilot 本地工具：

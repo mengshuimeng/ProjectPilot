@@ -17,3 +17,6 @@
 - skills/project_schema.md：定义通用项目画像字段。
 - skills/writing_rules.md：定义写作风格与约束。
 - skills/source_priority.md：定义 anchor/supporting 来源优先级与冲突处理策略。
+- skills/demo_rubric.md：定义课程 Demo 与答辩评分点。
+- skills/quality_guardrails.md：定义清洗、去重、事实和来源质量护栏。
+- skills/repository_rules.md：定义 README 与仓库提交说明规则。

@@ -22,3 +22,5 @@
 {{writing_rules}}
 
 {{source_priority}}
+
+{{quality_guardrails}}

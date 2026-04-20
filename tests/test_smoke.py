@@ -244,7 +244,8 @@ def test_local_tool_registry_lists_and_searches_files(tmp_path: Path) -> None:
     results = search_local_files(tmp_path, query="anchor", suffixes={".md"})
     assert status["tools"]
     assert status["mcp_server_available"] is True
-    assert status["mcp_server_command"] == "python -m app.mcp_server"
+    assert status["mcp_server_command"] == "python -m app.mcp_server --stdio"
+    assert status["mcp_check_command"] == "python -m app.mcp_server --check"
     assert results and results[0]["name"] == "demo_anchor.md"
 
 
@@ -253,6 +254,23 @@ def test_mcp_server_can_be_created() -> None:
 
     server = create_server()
     assert server is not None
+
+
+def test_mcp_server_manual_run_prints_usage(monkeypatch, capsys) -> None:
+    import sys
+
+    from app import mcp_server
+
+    class FakeStdin:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(sys, "stdin", FakeStdin())
+    mcp_server.main([])
+    output = capsys.readouterr().out
+    assert "ProjectPilot MCP server 已就绪" in output
+    assert "python -m app.mcp_server --check" in output
+    assert "--stdio" in output
 
 
 def test_display_summaries_are_deduplicated() -> None:
@@ -366,3 +384,28 @@ def test_verifier_reports_field_duplication_and_summary_quality() -> None:
     report = verify_profile(profile, docs)
     assert report["field_duplication"]["duplicated_field_pairs"]
     assert report["summary_quality_warnings"]
+
+
+def test_all_required_skills_exist_and_are_injected() -> None:
+    from app.generator import _load_prompt, _load_skill_bundle
+
+    skills = _load_skill_bundle(PROJECT_ROOT)
+    for skill_name in [
+        "project_schema",
+        "writing_rules",
+        "source_priority",
+        "demo_rubric",
+        "quality_guardrails",
+        "repository_rules",
+    ]:
+        assert skill_name in skills
+        assert skills[skill_name].strip()
+
+    defense_prompt = _load_prompt(PROJECT_ROOT, "defense_generator.md")
+    readme_prompt = _load_prompt(PROJECT_ROOT, "readme_generator.md")
+    assert "{{demo_rubric}}" not in defense_prompt
+    assert "Demo Rubric" in defense_prompt
+    assert "{{quality_guardrails}}" not in defense_prompt
+    assert "Quality Guardrails" in defense_prompt
+    assert "{{repository_rules}}" not in readme_prompt
+    assert "Repository Rules" in readme_prompt

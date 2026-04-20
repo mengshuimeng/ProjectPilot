@@ -51,13 +51,19 @@ def cmd_doctor() -> None:
         PROJECT_ROOT / "skills" / "project_schema.md",
         PROJECT_ROOT / "skills" / "writing_rules.md",
         PROJECT_ROOT / "skills" / "source_priority.md",
+        PROJECT_ROOT / "skills" / "demo_rubric.md",
+        PROJECT_ROOT / "skills" / "quality_guardrails.md",
+        PROJECT_ROOT / "skills" / "repository_rules.md",
     ]
     required_prompts = [
         PROJECT_ROOT / "prompts" / "system_role.md",
+        PROJECT_ROOT / "prompts" / "field_summarizer.md",
         PROJECT_ROOT / "prompts" / "intro_generator.md",
         PROJECT_ROOT / "prompts" / "innovation_generator.md",
         PROJECT_ROOT / "prompts" / "defense_generator.md",
+        PROJECT_ROOT / "prompts" / "readme_generator.md",
         PROJECT_ROOT / "prompts" / "retry_repair.md",
+        PROJECT_ROOT / "prompts" / "judge.md",
     ]
 
     print(f"- raw 文件: {len(raw_files)} 个")
@@ -80,6 +86,7 @@ def cmd_doctor() -> None:
     print(f"- Office 转换可用: {tool_status['office_convert_available']}")
     print(f"- MCP server 文件: {tool_status.get('mcp_server_available', False)}")
     print(f"- MCP Python 依赖: {tool_status.get('mcp_package_available', False)}")
+    print(f"- MCP 自检命令: {tool_status.get('mcp_check_command', '')}")
     print(f"- MCP 启动命令: {tool_status.get('mcp_server_command', '')}")
     print(f"- MCP server connected: {tool_status['mcp_server_connected']}")
     print(f"- MCP 说明: {tool_status['mcp_note']}")

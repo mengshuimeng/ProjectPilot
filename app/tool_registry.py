@@ -47,8 +47,9 @@ def get_tool_status() -> dict[str, Any]:
         "mcp_server_connected": False,
         "mcp_server_available": mcp_server_path.exists(),
         "mcp_package_available": mcp_package_available,
-        "mcp_server_command": "python -m app.mcp_server",
-        "mcp_note": "已提供 stdio MCP server 入口 `python -m app.mcp_server`；是否连接取决于外部 MCP 客户端配置。",
+        "mcp_server_command": "python -m app.mcp_server --stdio",
+        "mcp_check_command": "python -m app.mcp_server --check",
+        "mcp_note": "已提供 stdio MCP server；本地自检用 `python -m app.mcp_server --check`，MCP 客户端使用 `python -m app.mcp_server --stdio`。",
         "office_convert_available": bool(office),
         "office_convert_command": office,
     }

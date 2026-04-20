@@ -13,6 +13,9 @@ skills/
   project_schema.md
   writing_rules.md
   source_priority.md
+  demo_rubric.md
+  quality_guardrails.md
+  repository_rules.md
 ```
 
 职责：
@@ -20,6 +23,9 @@ skills/
 - `project_schema.md`：定义通用项目画像字段。
 - `writing_rules.md`：约束生成内容长度、风格和事实边界。
 - `source_priority.md`：定义 anchor 优先、supporting 补充的来源规则。
+- `demo_rubric.md`：约束 Demo 和答辩内容必须覆盖痛点、架构、Harness 设计和实际运行。
+- `quality_guardrails.md`：约束输出清洁度、字段去重、事实支撑和来源追踪。
+- `repository_rules.md`：约束 README、仓库说明、环境变量、运行命令和提交边界。
 
 ### prompts
 
@@ -67,10 +73,19 @@ ProjectPilot 明确调用外部能力，而不是只做网页聊天。
 - Office 旧格式转换调用。
 - MCP 工具状态描述。
 
-`app/mcp_server.py` 提供 stdio MCP server 入口：
+`app/mcp_server.py` 提供 stdio MCP server 入口。自检命令：
 
 ```powershell
-python -m app.mcp_server
+python -m app.mcp_server --check
+```
+
+给 MCP 客户端配置时使用：
+
+```json
+{
+  "command": "python",
+  "args": ["-m", "app.mcp_server", "--stdio"]
+}
 ```
 
 该 server 暴露以下工具：

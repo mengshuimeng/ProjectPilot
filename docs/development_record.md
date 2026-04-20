@@ -47,6 +47,9 @@
 - `skills/project_schema.md`
 - `skills/writing_rules.md`
 - `skills/source_priority.md`
+- `skills/demo_rubric.md`
+- `skills/quality_guardrails.md`
+- `skills/repository_rules.md`
 
 ## 3. Anchor / Supporting 输入模型
 
@@ -539,6 +542,27 @@ $env:PROJECTPILOT_LLM_ENABLED="false"
 - `docs/roadmap.md`
 
 这些文档分别说明项目总览、使用方式、系统架构、Harness 设计、数据契约、质量控制、Demo 录屏路线和后续路线图。
+
+## 20. Agent Skills 扩展
+
+为进一步体现 Harness 的上下文管理能力，新增 3 个技能文件：
+
+- `skills/demo_rubric.md`：约束 Demo 和答辩内容覆盖课程评分点，包括痛点、架构、Harness 设计和实际运行。
+- `skills/quality_guardrails.md`：约束输出清洁度、字段去重、事实支撑、交付物和局限性抽取质量。
+- `skills/repository_rules.md`：约束 README、仓库说明、环境变量、MCP、输出路径和提交边界。
+
+同时更新：
+
+- `app/generator.py`：`_load_skill_bundle()` 注入 6 个 skills。
+- `prompts/*.md`：按任务注入 demo、quality、repository 相关技能。
+- `main.py`：doctor 检查 6 个 skills 和完整 prompts。
+- `tests/test_smoke.py`：新增 skill 存在性与 prompt 注入回归测试。
+
+当前测试结果已更新为：
+
+```text
+20 passed
+```
 
 仍可以继续做的方向：
 

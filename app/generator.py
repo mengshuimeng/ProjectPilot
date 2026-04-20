@@ -254,6 +254,9 @@ def _load_skill_bundle(project_root: Path) -> dict[str, str]:
         "project_schema": _read_file(skills_dir / "project_schema.md"),
         "writing_rules": _read_file(skills_dir / "writing_rules.md"),
         "source_priority": _read_file(skills_dir / "source_priority.md"),
+        "demo_rubric": _read_file(skills_dir / "demo_rubric.md"),
+        "quality_guardrails": _read_file(skills_dir / "quality_guardrails.md"),
+        "repository_rules": _read_file(skills_dir / "repository_rules.md"),
     }
 
 

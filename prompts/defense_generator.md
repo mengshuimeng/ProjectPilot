@@ -18,3 +18,7 @@
 {{writing_rules}}
 
 {{source_priority}}
+
+{{demo_rubric}}
+
+{{quality_guardrails}}
