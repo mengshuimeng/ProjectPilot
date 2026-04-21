@@ -8,7 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from app.llm_client import get_llm_status
-from app.tool_registry import convert_office_document, get_tool_status, search_local_files
+from app.pipeline import run_extract, run_generate, run_verify
+from app.retriever import retrieve_evidence
+from app.tool_registry import (
+    build_project_knowledge_map,
+    compact_profile_summary,
+    convert_office_document,
+    get_tool_status,
+    search_local_files,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -28,6 +36,36 @@ def _require_mcp() -> Any:
             "然后使用 `python -m app.mcp_server --check` 检查 ProjectPilot MCP server。"
         ) from IMPORT_ERROR
     return FastMCP
+
+
+def _load_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _processed_dir(root: Path) -> Path:
+    if (root / "session.json").exists() or root.parent.name == "sessions":
+        return root / "processed"
+    return root / "data" / "processed"
+
+
+def _workspace_root(workspace: str = "") -> Path:
+    if not workspace:
+        return PROJECT_ROOT
+    candidate = Path(workspace)
+    if not candidate.is_absolute():
+        candidate = (PROJECT_ROOT / candidate).resolve()
+    return candidate
+
+
+def _load_context(root: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    profile_path = _processed_dir(root) / "profile.json"
+    documents_path = _processed_dir(root) / "documents.json"
+    if not profile_path.exists() or not documents_path.exists():
+        profile = run_extract(root)
+    else:
+        profile = dict(_load_json(profile_path))
+    docs_payload = _load_json(documents_path)
+    return profile, list(docs_payload.get("documents", []))
 
 
 def create_server() -> Any:
@@ -76,6 +114,77 @@ def create_server() -> Any:
         """Convert legacy doc/ppt files to docx/pptx through local LibreOffice."""
         return convert_office_document(Path(path), target_ext)
 
+    @server.tool()
+    def extract_project_profile(workspace: str = "") -> dict[str, Any]:
+        """Run extract and return a compact project profile summary."""
+        root = _workspace_root(workspace)
+        profile = run_extract(root)
+        return {
+            "workspace": str(root),
+            "profile": compact_profile_summary(profile),
+        }
+
+    @server.tool()
+    def retrieve_task_evidence_mcp(task: str, workspace: str = "", limit: int = 8) -> dict[str, Any]:
+        """Retrieve task evidence with anchor-priority hybrid lexical+semantic scoring."""
+        root = _workspace_root(workspace)
+        profile, docs = _load_context(root)
+        evidence = retrieve_evidence(task, profile, docs, limit=limit)
+        return {
+            "workspace": str(root),
+            "task": task,
+            "retrieval_mode": evidence.get("retrieval_mode", ""),
+            "semantic_index_summary": evidence.get("semantic_index_summary", {}),
+            "chunks": evidence.get("chunks", []),
+            "role_summary": evidence.get("role_summary", {}),
+            "source_summary": evidence.get("source_summary", {}),
+        }
+
+    @server.tool()
+    def verify_project_materials(workspace: str = "") -> dict[str, Any]:
+        """Run verifier and return the current verify report."""
+        root = _workspace_root(workspace)
+        report = run_verify(root)
+        return {"workspace": str(root), "report": report}
+
+    @server.tool()
+    def project_knowledge_map(workspace: str = "") -> dict[str, Any]:
+        """Build a local project knowledge map from the extracted profile."""
+        root = _workspace_root(workspace)
+        profile, _ = _load_context(root)
+        return {"workspace": str(root), "knowledge_map": build_project_knowledge_map(profile)}
+
+    @server.tool()
+    def orchestrate_project_task(task: str = "defense", workspace: str = "", generate: bool = False) -> dict[str, Any]:
+        """Compose extract, evidence retrieval, verify, and optional generation as one MCP workflow tool."""
+        root = _workspace_root(workspace)
+        profile = run_extract(root)
+        docs_payload = _load_json(_processed_dir(root) / "documents.json")
+        docs = list(docs_payload.get("documents", []))
+        evidence = retrieve_evidence(task, profile, docs)
+        verify_report = run_verify(root)
+        response: dict[str, Any] = {
+            "workspace": str(root),
+            "task": task,
+            "profile": compact_profile_summary(profile),
+            "evidence": {
+                "retrieval_mode": evidence.get("retrieval_mode", ""),
+                "semantic_index_summary": evidence.get("semantic_index_summary", {}),
+                "role_summary": evidence.get("role_summary", {}),
+                "source_summary": evidence.get("source_summary", {}),
+                "chunks": evidence.get("chunks", [])[:6],
+            },
+            "verify_report": verify_report,
+        }
+        if generate:
+            generated = run_generate(root, task)
+            response["generated"] = {
+                "output_path": generated.get("output_path", ""),
+                "meta_path": generated.get("meta_path", ""),
+                "evidence_path": generated.get("evidence_path", ""),
+            }
+        return response
+
     return server
 
 
@@ -89,6 +198,11 @@ def _server_summary() -> dict[str, Any]:
             "search_project_files",
             "search_raw_materials",
             "convert_office_material",
+            "extract_project_profile",
+            "retrieve_task_evidence_mcp",
+            "verify_project_materials",
+            "project_knowledge_map",
+            "orchestrate_project_task",
         ],
         "client_command": "python",
         "client_args": ["-m", "app.mcp_server", "--stdio"],

@@ -146,6 +146,11 @@ python -m app.mcp_server --check
 - `search_project_files`
 - `search_raw_materials`
 - `convert_office_material`
+- `extract_project_profile`
+- `retrieve_task_evidence_mcp`
+- `verify_project_materials`
+- `project_knowledge_map`
+- `orchestrate_project_task`
 
 页面流程：
 

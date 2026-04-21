@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+.pytest_tmp/
+manual_test_temp/
+test_temp_work/
 pytest-cache-files-*/
 .mypy_cache/
 .ruff_cache/

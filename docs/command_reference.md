@@ -173,6 +173,18 @@ python -m app.mcp_server --check
 
 注意：不要在普通终端里直接运行 `python -m app.mcp_server --stdio` 后手动输入空行。stdio MCP server 需要由 MCP 客户端通过 JSON-RPC 协议连接。
 
+当前 MCP server 暴露的主要工具包括：
+
+- `projectpilot_status`
+- `search_project_files`
+- `search_raw_materials`
+- `convert_office_material`
+- `extract_project_profile`
+- `retrieve_task_evidence_mcp`
+- `verify_project_materials`
+- `project_knowledge_map`
+- `orchestrate_project_task`
+
 ## 6. 测试与静态检查
 
 运行全部测试：
@@ -400,4 +412,3 @@ CLI 模式下可重新运行：
 python main.py extract
 python main.py verify
 ```
-

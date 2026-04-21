@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import Counter
 from typing import Any
 
-from app.extractor import CANONICAL_PROJECT_NAME, is_known_project_alias, is_noise_paragraph
+from app.extractor import CANONICAL_PROJECT_NAME, is_known_project_alias, is_noise_paragraph, normalize_text
 
 REQUIRED_FIELDS = [
     "project_name",
@@ -262,14 +263,20 @@ def _find_unsupported_claims(
     evidence: dict[str, Any] | None,
 ) -> list[str]:
     support_text = _as_text(profile)
-    if evidence:
-        support_text += "\n" + "\n".join(str(chunk.get("text", "")) for chunk in evidence.get("chunks", []))
+    evidence_chunks = list(evidence.get("chunks", [])) if evidence else []
+    if evidence_chunks:
+        support_text += "\n" + "\n".join(str(chunk.get("text", "")) for chunk in evidence_chunks)
 
     unsupported: list[str] = []
     for term in CLAIM_TERMS:
         if term.lower() in output_text.lower() and term.lower() not in support_text.lower():
             unsupported.append(term)
-    return unsupported
+
+    for detail in _claim_evidence_alignment(output_text, profile, evidence).get("weak_claims", []):
+        claim = str(detail.get("claim", "")).strip()
+        if claim:
+            unsupported.append(claim[:80])
+    return list(dict.fromkeys(unsupported))
 
 
 def _claim_keywords(sentence: str) -> set[str]:
@@ -281,6 +288,35 @@ def _claim_keywords(sentence: str) -> set[str]:
         if len(token) >= 2:
             keywords.add(token.lower())
     return keywords
+
+
+def _claim_token_counter(text: str) -> Counter[str]:
+    normalized = normalize_text(text)
+    tokens = re.findall(r"[A-Za-z][A-Za-z0-9.+#-]{1,}|[\u4e00-\u9fff]{2,}", normalized)
+    compact = re.sub(r"\s+", "", normalized.lower())
+    chargrams = [compact[index : index + 2] for index in range(max(0, len(compact) - 1))]
+    return Counter(token.lower() for token in [*tokens, *chargrams] if token.strip())
+
+
+def _cosine_counter_similarity(left: Counter[str], right: Counter[str]) -> float:
+    if not left or not right:
+        return 0.0
+    shared = set(left) & set(right)
+    numerator = sum(left[token] * right[token] for token in shared)
+    if not numerator:
+        return 0.0
+    left_norm = math.sqrt(sum(value * value for value in left.values()))
+    right_norm = math.sqrt(sum(value * value for value in right.values()))
+    if left_norm == 0.0 or right_norm == 0.0:
+        return 0.0
+    return numerator / (left_norm * right_norm)
+
+
+def _text_excerpt(text: str, max_chars: int = 140) -> str:
+    compact = normalize_text(text)
+    if len(compact) <= max_chars:
+        return compact
+    return compact[:max_chars].rstrip() + "..."
 
 
 def _claim_sentences(output_text: str) -> list[str]:
@@ -297,34 +333,55 @@ def _claim_sentences(output_text: str) -> list[str]:
 
 def _claim_evidence_alignment(output_text: str, profile: dict[str, Any], evidence: dict[str, Any] | None) -> dict[str, Any]:
     evidence_chunks = list(evidence.get("chunks", [])) if evidence else []
-    support_units = [str(chunk.get("text", "")) for chunk in evidence_chunks if chunk.get("text")]
-    if not support_units:
-        support_units = [_as_text(profile)]
-
     checked: list[dict[str, Any]] = []
-    weak: list[str] = []
+    weak: list[dict[str, Any]] = []
+    strong: list[dict[str, Any]] = []
     for sentence in _claim_sentences(output_text):
         sentence_terms = _claim_keywords(sentence)
-        best_score = 0
+        sentence_counter = _claim_token_counter(sentence)
+        best_overlap = 0
+        best_semantic = 0.0
+        best_score = 0.0
         best_source = ""
+        best_excerpt = ""
+        best_role = ""
         for chunk in evidence_chunks:
             chunk_text = str(chunk.get("text", ""))
             overlap = sentence_terms & _claim_keywords(chunk_text)
-            score = len(overlap)
+            semantic = _cosine_counter_similarity(sentence_counter, _claim_token_counter(chunk_text))
+            score = len(overlap) * 0.7 + semantic * 3.2
             if score > best_score:
                 best_score = score
+                best_overlap = len(overlap)
+                best_semantic = semantic
                 best_source = str(chunk.get("source", ""))
-        if best_score < 2:
-            weak.append(sentence[:120])
-        checked.append({"claim": sentence[:160], "best_overlap": best_score, "best_source": best_source})
+                best_role = str(chunk.get("role", ""))
+                best_excerpt = _text_excerpt(chunk_text)
+        detail = {
+            "claim": sentence[:160],
+            "best_overlap": best_overlap,
+            "best_semantic_similarity": round(best_semantic, 4),
+            "support_score": round(best_score, 4),
+            "best_source": best_source,
+            "best_role": best_role,
+            "best_evidence_excerpt": best_excerpt,
+        }
+        is_supported = best_overlap >= 2 or best_semantic >= 0.34 or best_score >= 1.15
+        if not is_supported:
+            weak.append(detail)
+        else:
+            strong.append(detail)
+        checked.append(detail)
 
     total = len(checked)
-    supported = len([item for item in checked if int(item["best_overlap"]) >= 2])
+    supported = len(strong)
     return {
         "checked_count": total,
         "supported_count": supported,
         "weak_claims": weak,
-        "ok": total == 0 or supported / total >= 0.7,
+        "supported_claims": strong[:12],
+        "support_ratio": round((supported / total), 4) if total else 1.0,
+        "ok": total == 0 or supported / total >= 0.72,
         "details": checked[:12],
     }
 

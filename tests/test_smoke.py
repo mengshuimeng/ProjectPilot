@@ -102,6 +102,9 @@ def test_retriever_returns_non_empty_evidence(tmp_path: Path) -> None:
     assert evidence["task"] == "defense"
     assert evidence["chunks"]
     assert any(chunk["role"] == "anchor" for chunk in evidence["chunks"])
+    assert evidence["retrieval_mode"] == "hybrid_lexical_semantic"
+    assert evidence["semantic_index_summary"]["supports_cross_document_semantic_index"] is True
+    assert "semantic_score" in evidence["chunks"][0]
 
 
 def test_generator_fallback_outputs_string(tmp_path: Path) -> None:
@@ -236,6 +239,8 @@ def test_verifier_reports_claim_evidence_alignment(tmp_path: Path) -> None:
     )
     assert "claim_evidence_alignment" in report
     assert report["claim_evidence_alignment"]["checked_count"] >= 1
+    assert "supported_claims" in report["claim_evidence_alignment"]
+    assert report["claim_evidence_alignment"]["details"]
 
 
 def test_local_tool_registry_lists_and_searches_files(tmp_path: Path) -> None:
@@ -254,6 +259,15 @@ def test_mcp_server_can_be_created() -> None:
 
     server = create_server()
     assert server is not None
+
+
+def test_mcp_server_check_summary_includes_workflow_tools() -> None:
+    from app.mcp_server import _server_summary
+
+    summary = _server_summary()
+    assert "retrieve_task_evidence_mcp" in summary["tools"]
+    assert "project_knowledge_map" in summary["tools"]
+    assert "orchestrate_project_task" in summary["tools"]
 
 
 def test_mcp_server_manual_run_prints_usage(monkeypatch, capsys) -> None:

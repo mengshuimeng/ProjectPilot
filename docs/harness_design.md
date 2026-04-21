@@ -94,8 +94,13 @@ python -m app.mcp_server --check
 - `search_project_files`
 - `search_raw_materials`
 - `convert_office_material`
+- `extract_project_profile`
+- `retrieve_task_evidence_mcp`
+- `verify_project_materials`
+- `project_knowledge_map`
+- `orchestrate_project_task`
 
-支持 MCP 的客户端可以通过 stdio 启动该命令，把 ProjectPilot 的本地文件检索、raw 材料检索和 Office 转换能力作为外部工具调用。
+支持 MCP 的客户端可以通过 stdio 启动该命令，把 ProjectPilot 的本地文件检索、raw 材料检索、项目画像抽取、任务 evidence 检索、校验、知识图谱摘要和工作流编排能力作为外部工具调用。
 
 ### CLI 工具
 

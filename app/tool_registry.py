@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any
 
 
+def _node(node_id: str, label: str, node_type: str) -> dict[str, str]:
+    return {"id": node_id, "label": label, "type": node_type}
+
+
 def list_tools() -> list[dict[str, str]]:
     return [
         {
@@ -19,6 +23,11 @@ def list_tools() -> list[dict[str, str]]:
             "name": "office_convert",
             "type": "local_tool",
             "description": "通过本地 LibreOffice 将旧版 doc/ppt 转换为 docx/pptx。",
+        },
+        {
+            "name": "project_knowledge_map",
+            "type": "local_tool",
+            "description": "把抽取后的项目画像组织成可追踪的本地知识图谱摘要。",
         },
     ]
 
@@ -76,6 +85,63 @@ def search_local_files(root: Path, query: str = "", suffixes: set[str] | None = 
         if len(results) >= limit:
             break
     return results
+
+
+def compact_profile_summary(profile: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "anchor_document": profile.get("anchor_document", ""),
+        "supporting_documents": list(profile.get("supporting_documents", [])),
+        "project_name": profile.get("project_name", ""),
+        "project_type": profile.get("project_type", ""),
+        "core_technologies": list(profile.get("core_technologies", []))[:8],
+        "system_modules": list(profile.get("system_modules", []))[:8],
+        "display_summaries": dict(profile.get("display_summaries", {})),
+    }
+
+
+def build_project_knowledge_map(profile: dict[str, Any]) -> dict[str, Any]:
+    project_name = str(profile.get("project_name", "未命名项目")) or "未命名项目"
+    anchor_document = str(profile.get("anchor_document", ""))
+    supporting = [str(item) for item in profile.get("supporting_documents", []) if str(item).strip()]
+
+    nodes = [
+        _node("project", project_name, "project"),
+        _node("anchor", anchor_document or "anchor", "anchor_document"),
+    ]
+    edges = [{"source": "project", "target": "anchor", "type": "primary_source"}]
+
+    for index, name in enumerate(supporting, start=1):
+        node_id = f"supporting_{index}"
+        nodes.append(_node(node_id, name, "supporting_document"))
+        edges.append({"source": "project", "target": node_id, "type": "supporting_source"})
+
+    for index, tech in enumerate(list(profile.get("core_technologies", []))[:8], start=1):
+        node_id = f"tech_{index}"
+        nodes.append(_node(node_id, str(tech), "technology"))
+        edges.append({"source": "project", "target": node_id, "type": "uses"})
+
+    for index, module in enumerate(list(profile.get("system_modules", []))[:8], start=1):
+        node_id = f"module_{index}"
+        nodes.append(_node(node_id, str(module), "module"))
+        edges.append({"source": "project", "target": node_id, "type": "contains"})
+
+    deliverables = profile.get("deliverables", [])
+    if isinstance(deliverables, str):
+        deliverables = [item for item in deliverables.replace("，", "、").split("、") if item.strip()]
+    for index, deliverable in enumerate(list(deliverables)[:6], start=1):
+        node_id = f"deliverable_{index}"
+        nodes.append(_node(node_id, str(deliverable), "deliverable"))
+        edges.append({"source": "project", "target": node_id, "type": "delivers"})
+
+    return {
+        "project_name": project_name,
+        "anchor_document": anchor_document,
+        "supporting_document_count": len(supporting),
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "nodes": nodes,
+        "edges": edges,
+    }
 
 
 def convert_office_document(path: Path, target_ext: str) -> dict[str, Any]:
