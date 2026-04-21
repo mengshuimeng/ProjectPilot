@@ -57,6 +57,7 @@ streamlit run app/ui.py
 - 当前模型。
 - 当前会话。
 - 当前主材料。
+- 当前建议动作。
 
 ### 0:25 - 0:55 上传材料
 
@@ -109,7 +110,7 @@ streamlit run app/ui.py
 
 讲解：
 
-> verifier 会检查 anchor 是否存在、解析是否失败、输出是否混入脏文本、来源是否覆盖、字段是否重复、声明是否有证据支撑。
+> verifier 会检查 anchor 是否存在、解析是否失败、输出是否混入脏文本、来源是否覆盖、字段是否重复、声明是否有证据支撑。页面右侧还会显示 claim-support 摘要，便于现场解释为什么这段内容可信。
 
 ### 1:45 - 2:30 生成全部
 
@@ -141,10 +142,12 @@ streamlit run app/ui.py
 - 生成模式。
 - retry 是否发生。
 - anchor/supporting 来源。
+- claim-support 支撑率。
+- 实际使用来源。
 
 讲解：
 
-> 每个输出都有 evidence 和 meta，可以追踪用了哪些来源、是否发生 retry，以及校验报告结果。
+> 每个输出都有 evidence 和 meta，可以追踪用了哪些来源、是否发生 retry，以及校验报告结果。现在 UI 里还能直接看到 claim-support 摘要和关键 evidence 片段，更方便讲清楚闭环。
 
 ### 2:55 - 3:00 总结
 
@@ -167,4 +170,3 @@ $env:PROJECTPILOT_LLM_ENABLED="false"
 - 换成带文本层的 PDF。
 - 使用 md/txt/docx/pptx。
 - 查看 `parse_warning`。
-

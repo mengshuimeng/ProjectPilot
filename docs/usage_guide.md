@@ -64,7 +64,7 @@ python main.py doctor
 ```
 
 `status` 用于查看原始文件、anchor、supporting、解析状态和 LLM 模式。  
-`doctor` 用于检查 API、skills、prompts、raw 文件和本地工具状态。
+`doctor` 用于检查 API、skills、prompts、raw 文件、本地工具状态、semantic retrieval、OCR fallback 和最近一次 verify 摘要。
 
 ### 3. 抽取和校验
 
@@ -159,12 +159,29 @@ python -m app.mcp_server --check
 3. 点击“保存上传并抽取”。
 4. 点击“运行校验”。
 5. 点击“生成全部”，或在各 Tab 内单独生成。
-6. 查看项目画像、校验状态、生成结果和证据来源。
+6. 查看项目画像、校验状态、生成结果、claim-support 摘要和证据来源。
 
 UI 有两个辅助按钮：
 
 - `清空当前会话`：清空页面展示，不删除历史磁盘文件。
 - `重置 Demo 示例`：创建一个新的干净示例 session，方便录屏。
+
+页面会额外显示：
+
+- 当前建议动作。
+- 每个结果的 `used_sources / used_roles / retry`。
+- claim-support 支撑率和来源摘要。
+- anchor / supporting 覆盖情况。
+
+## OCR fallback
+
+当前版本预留了 OCR fallback 开关：
+
+```powershell
+$env:PROJECTPILOT_OCR_ENABLED="true"
+```
+
+默认不开启。只有当环境具备 `pytesseract`、`Pillow` 和 Tesseract 配置时，OCR fallback 才会真正可用。
 
 ## 支持格式
 

@@ -281,6 +281,8 @@ def _clean_name_candidate(candidate: str) -> str:
     candidate = re.sub(r"^#+\s*", "", candidate)
     candidate = re.sub(r"^(?:项目名称|课题名称|项目名|系统名称|论文题目|题目|名称)\s*[:：]\s*", "", candidate)
     candidate = candidate.replace("**", "").replace("《", "").replace("》", "")
+    candidate = re.sub(r"^作品/?方案名称\s*[:：]?\s*", "", candidate)
+    candidate = re.sub(r"^作品名称\s*[:：]?\s*", "", candidate)
     for marker in [
         "项目类型",
         "申请人",
@@ -289,6 +291,16 @@ def _clean_name_candidate(candidate: str) -> str:
         "所在学院",
         "专 业",
         "专业",
+        "学校",
+        "学院",
+        "院系",
+        "院校",
+        "课程",
+        "比赛",
+        "赛事",
+        "团队",
+        "作者",
+        "姓名",
         "PPT 提纲",
         "PPT提纲",
         "项目背景",
@@ -306,6 +318,15 @@ def _clean_name_candidate(candidate: str) -> str:
     ]:
         if marker in candidate:
             candidate = candidate.split(marker, 1)[0]
+    separators = [r"\s*-\s*", r"\s*—\s*", r"\s*\|\s*"]
+    if any(sep in candidate for sep in [" - ", "—", "|"]):
+        parts = [part.strip() for part in re.split(r"\s*(?:-\s*|—\s*|\|\s*)", candidate) if part.strip()]
+        if len(parts) > 1:
+            rich_parts = [part for part in parts if any(token in part for token in ["系统", "平台", "工具", "助手", "方案", "项目", "机器人", "装置", "设备"])]
+            if rich_parts:
+                candidate = rich_parts[-1]
+            elif len(parts[-1]) >= 6:
+                candidate = parts[-1]
     candidate = candidate.strip()
     candidate = re.split(r"[;；]\s*[\u4e00-\u9fff]{2,4}(?:[;；]|\s*$)", candidate, maxsplit=1)[0].strip()
     for alias in PROJECT_NAME_ALIASES:
@@ -323,6 +344,8 @@ def _is_bad_project_name_candidate(candidate: str) -> bool:
         return True
     bad_markers = ["摘要", "关键词", "参考文献", "心得体会", "指导教师", "作者", "姓名", "学号"]
     if any(marker in text for marker in bad_markers):
+        return True
+    if any(token in text for token in ["新疆大学", "学院", "比赛", "赛事", "团队", "申报书", "设计方案", "作品/方案名称"]):
         return True
     if re.search(r"[\u4e00-\u9fff]{2,4}[;；][\u4e00-\u9fff]{2,4}", text):
         return True

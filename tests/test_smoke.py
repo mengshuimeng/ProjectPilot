@@ -5,7 +5,7 @@ from pathlib import Path
 from app.extractor import build_profile
 from app.generator import generate_output
 from app.llm_client import LLMClient
-from app.parser import load_documents, parse_document
+from app.parser import get_ocr_status, load_documents, parse_document
 from app.pipeline import run_all, run_extract, run_generate
 from app.retriever import retrieve_evidence
 from app.tool_registry import get_tool_status, search_local_files
@@ -223,6 +223,24 @@ def test_project_name_does_not_include_author_or_abstract() -> None:
     assert "张三" not in profile["project_name"]
 
 
+def test_project_name_prefers_title_over_school_and_author_metadata() -> None:
+    docs = [
+        {
+            "name": "anchor.md",
+            "role": "anchor",
+            "text": "作品/方案名称：基于多模态感知与智能决策的柔性质检分拣机器人系统\n学校：新疆大学\n作者：姜树豪\n项目背景：面向智能制造产线。",
+            "char_count": 90,
+            "parse_status": "parsed",
+            "parse_warning": "",
+            "suffix": ".md",
+        }
+    ]
+    profile = build_profile(docs)
+    assert profile["project_name"] == "基于多模态感知与智能决策的柔性质检分拣机器人系统"
+    assert "新疆大学" not in profile["project_name"]
+    assert "姜树豪" not in profile["project_name"]
+
+
 def test_verifier_reports_claim_evidence_alignment(tmp_path: Path) -> None:
     raw_dir = _write_fixture_docs(tmp_path)
     docs = load_documents(raw_dir, anchor_name="anchor_project.md")
@@ -423,3 +441,10 @@ def test_all_required_skills_exist_and_are_injected() -> None:
     assert "Quality Guardrails" in defense_prompt
     assert "{{repository_rules}}" not in readme_prompt
     assert "Repository Rules" in readme_prompt
+
+
+def test_ocr_status_returns_expected_keys() -> None:
+    status = get_ocr_status()
+    assert "enabled" in status
+    assert "available" in status
+    assert "note" in status

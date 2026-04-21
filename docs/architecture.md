@@ -81,7 +81,7 @@ data/sessions/{session_id}/
 | `app/verifier.py` | 校验 profile、输出文本、来源覆盖和字段重复污染 |
 | `app/pipeline.py` | 编排 extract、verify、generate、retry 和文件写出 |
 | `app/ui.py` | Streamlit 产品页面 |
-| `app/tool_registry.py` | 本地工具注册层，包含文件检索和 Office 转换能力 |
+| `app/tool_registry.py` | 本地工具注册层，包含文件检索、Office 转换和知识图谱摘要能力 |
 
 ## 生成链路
 
@@ -90,10 +90,11 @@ data/sessions/{session_id}/
 1. 读取或重新抽取 profile。
 2. 加载 documents。
 3. 调用 retriever 获取 evidence。
-4. 调用 generator 生成初稿。
-5. 调用 verifier 校验初稿。
-6. 如果有关键 warning，执行一次 retry repair。
-7. 写出最终 markdown、meta、evidence 和 verify report。
+4. evidence 检索采用轻量 lexical + semantic 混合索引。
+5. 调用 generator 生成初稿。
+6. 调用 verifier 校验初稿，并输出 claim-support 对齐结果。
+7. 如果有关键 warning，执行一次 retry repair。
+8. 写出最终 markdown、meta、evidence 和 verify report。
 
 输出文件：
 
@@ -111,4 +112,3 @@ data/sessions/{session_id}/outputs/{task}.md
 data/sessions/{session_id}/outputs/{task}_meta.json
 data/sessions/{session_id}/outputs/{task}_evidence.json
 ```
-

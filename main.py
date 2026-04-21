@@ -4,11 +4,28 @@ import argparse
 from pathlib import Path
 
 from app.llm_client import get_llm_status
-from app.parser import COMPAT_EXTS, STABLE_EXTS, load_documents
+from app.mcp_server import _server_summary
+from app.parser import COMPAT_EXTS, STABLE_EXTS, get_ocr_status, load_documents
 from app.pipeline import run_all, run_extract, run_generate, run_verify
 from app.tool_registry import get_tool_status
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def _processed_dir() -> Path:
+    return PROJECT_ROOT / "data" / "processed"
+
+
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    import json
+
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _latest_verify_report() -> dict:
+    return _read_json(_processed_dir() / "verify_report.json")
 
 
 def cmd_status() -> None:
@@ -22,6 +39,7 @@ def cmd_status() -> None:
     llm_status = get_llm_status()
 
     print("ProjectPilot 状态检查")
+    print(f"当前工作区: {PROJECT_ROOT}")
     print(f"原始文档数量: {len(docs)}")
     print(f"非空文件数量: {len(non_empty)}")
     print(f"anchor document: {anchor.get('name', '未识别')}")
@@ -67,6 +85,7 @@ def cmd_doctor() -> None:
     ]
 
     print(f"- raw 文件: {len(raw_files)} 个")
+    print(f"- 默认工作区: {PROJECT_ROOT}")
     print(f"- anchor 存在: {bool(anchor)}")
     print(f"- anchor: {anchor.get('name', '未识别')}")
     print(f"- supporting 数量: {len([doc for doc in docs if doc.get('role') == 'supporting'])}")
@@ -81,8 +100,12 @@ def cmd_doctor() -> None:
     print(f"- model: {llm_status['model']}")
     if llm_status.get("reason"):
         print(f"- fallback 原因: {llm_status['reason']}")
+    print("- semantic retrieval: 已启用（hybrid_lexical_semantic）")
+    ocr_status = get_ocr_status()
+    print(f"- OCR fallback: enabled={ocr_status['enabled']} | available={ocr_status['available']}")
     tool_status = get_tool_status()
     print(f"- 本地工具数量: {len(tool_status['tools'])}")
+    print(f"- MCP 工具数量: {len(_server_summary()['tools'])}")
     print(f"- Office 转换可用: {tool_status['office_convert_available']}")
     print(f"- MCP server 文件: {tool_status.get('mcp_server_available', False)}")
     print(f"- MCP Python 依赖: {tool_status.get('mcp_package_available', False)}")
@@ -90,6 +113,11 @@ def cmd_doctor() -> None:
     print(f"- MCP 启动命令: {tool_status.get('mcp_server_command', '')}")
     print(f"- MCP server connected: {tool_status['mcp_server_connected']}")
     print(f"- MCP 说明: {tool_status['mcp_note']}")
+    report = _latest_verify_report()
+    if report:
+        print(f"- 最新 verify: passed={report.get('passed')} | warnings={len(report.get('warnings', []))} | infos={len(report.get('infos', []))}")
+    else:
+        print("- 最新 verify: 暂无")
 
 
 def main() -> None:

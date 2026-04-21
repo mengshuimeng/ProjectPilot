@@ -69,6 +69,14 @@ ProjectPilot V2 是一个面向任意项目材料的 AI 原生工具。它不再
 - Retry Repair：关键 warning 出现时，自动进行一次有限修复。
 - 生成产物：intro、innovation、defense、readme。
 
+## 当前已实现
+
+- 上传、抽取、校验、生成、重试修复已形成闭环。
+- evidence 检索已升级为轻量 lexical + semantic 混合索引，并保留 anchor 优先。
+- `claim_evidence_alignment` 已返回句子级支撑明细。
+- MCP server 已提供抽取、检索、校验、知识图谱摘要和工作流编排工具。
+- OCR fallback 已预留接口，可在环境满足时启用。
+
 ## Harness Engineering 设计
 
 ### 上下文管理 / Agent Skill
@@ -197,6 +205,12 @@ CLI 中也可以通过环境变量指定 anchor：
 $env:PROJECTPILOT_ANCHOR_DOCUMENT="your-main-doc.pdf"
 ```
 
+预留 OCR fallback 开关：
+
+```powershell
+$env:PROJECTPILOT_OCR_ENABLED="true"
+```
+
 ## 使用方法
 
 完整命令速查见：[docs/command_reference.md](docs/command_reference.md)。
@@ -213,6 +227,8 @@ pip install -r requirements.txt
 python main.py status
 python main.py doctor
 ```
+
+`doctor` 会显示默认工作区、semantic retrieval、OCR fallback、MCP 工具数量以及最近一次 verify 摘要。
 
 抽取与校验：
 
@@ -289,6 +305,8 @@ python -m app.mcp_server --check
 
 “重置 Demo 示例”按钮会创建一个新的示例会话，不删除 CLI 使用的 `data/raw/`。
 
+页面会同时展示当前建议动作、每个结果的 `used_sources / used_roles / retry`、claim-support 摘要，以及 anchor / supporting 覆盖情况，更适合录屏答辩时说明证据链和反馈闭环。
+
 ## 输出产物
 
 - `data/processed/documents.json`：解析和清洗后的文档，包含 role、parse_status、parse_warning。
@@ -318,6 +336,14 @@ python -m app.mcp_server --check
 
 - 旧版 `doc` / `ppt` 兼容性依赖本地 LibreOffice 等转换环境。
 - 扫描版 PDF 如果没有文本层，解析效果会受限。
+- OCR fallback 当前仍是预留接口，未默认开启，也未接入专门的高精度版面识别管线。
 - 当前 claim 校验已支持句子级 claim-support 对齐和支撑明细返回，但仍不等同于完整学术查重平台或人工事实审查。
 - 当前 evidence 检索已采用轻量 lexical + semantic 混合索引，但仍未接入大规模向量库或外部检索集群。
 - 当前 stdio MCP server 已支持项目画像、evidence、verify 和工作流编排，但默认仍以本地工具链为主，未默认接入云端知识库。
+
+## 后续规划
+
+- 接入更稳定的 OCR fallback。
+- 继续收紧项目名称抽取，减少封面、赛事和作者信息干扰。
+- 为 UI 增加更完整的证据详情和来源追踪视图。
+- 评估是否引入更强的语义索引方案。

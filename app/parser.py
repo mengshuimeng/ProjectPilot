@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import io
 from pathlib import Path
 from typing import Any, Literal
 
@@ -21,6 +22,16 @@ try:
 except ImportError:  # pragma: no cover
     Presentation = None
 
+try:
+    import pytesseract
+except ImportError:  # pragma: no cover
+    pytesseract = None
+
+try:
+    from PIL import Image
+except ImportError:  # pragma: no cover
+    Image = None
+
 
 DocumentRole = Literal["anchor", "supporting"]
 
@@ -28,6 +39,18 @@ TEXT_EXTS = {".md", ".txt"}
 STABLE_EXTS = {".txt", ".md", ".pdf", ".docx", ".pptx"}
 COMPAT_EXTS = {".doc", ".ppt"}
 SUPPORTED_EXTS = STABLE_EXTS | COMPAT_EXTS
+OCR_ENABLED = os.getenv("PROJECTPILOT_OCR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+OCR_READY = bool(pytesseract is not None and Image is not None and fitz is not None)
+
+
+def get_ocr_status() -> dict[str, Any]:
+    return {
+        "enabled": OCR_ENABLED,
+        "available": OCR_READY,
+        "note": "OCR fallback 已预留；需安装 pytesseract / Pillow / PyMuPDF 并配置 Tesseract。"
+        if OCR_READY
+        else "OCR fallback 已预留，但当前环境依赖未就绪。",
+    }
 
 
 def read_text_file(path: Path) -> tuple[str, str]:
@@ -54,6 +77,29 @@ def read_pdf_file(path: Path) -> tuple[str, str]:
         return "\n".join(parts).strip(), ""
     except Exception as exc:
         return "", f"PDF 解析失败：{exc}"
+
+
+def ocr_pdf_file(path: Path, max_pages: int = 6) -> tuple[str, str]:
+    if not OCR_ENABLED:
+        return "", "OCR fallback 未启用。"
+    if not OCR_READY:
+        return "", "OCR 依赖未安装或缺少 PyMuPDF / Pillow / pytesseract。"
+    try:
+        parts: list[str] = []
+        with fitz.open(path) as doc:
+            for index, page in enumerate(doc):
+                if index >= max_pages:
+                    break
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                image = Image.open(io.BytesIO(pixmap.tobytes("png")))
+                text = pytesseract.image_to_string(image, lang="chi_sim+eng")
+                if text.strip():
+                    parts.append(text.strip())
+        if parts:
+            return "\n".join(parts).strip(), "PDF 通过 OCR fallback 解析。"
+        return "", "OCR 未提取到有效文本。"
+    except Exception as exc:
+        return "", f"OCR 解析失败：{exc}"
 
 
 def read_docx_file(path: Path) -> tuple[str, str]:
@@ -124,6 +170,13 @@ def parse_document(path: Path, role: DocumentRole = "supporting") -> dict[str, A
         text, parse_warning = read_text_file(path)
     elif suffix == ".pdf":
         text, parse_warning = read_pdf_file(path)
+        if not text.strip():
+            ocr_text, ocr_warning = ocr_pdf_file(path)
+            if ocr_text.strip():
+                text = ocr_text
+                parse_warning = ocr_warning
+            elif ocr_warning and not parse_warning:
+                parse_warning = ocr_warning
     elif suffix == ".docx":
         text, parse_warning = read_docx_file(path)
     elif suffix == ".pptx":

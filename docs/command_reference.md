@@ -60,6 +60,12 @@ $env:PROJECTPILOT_TIMEOUT="30"
 $env:PROJECTPILOT_ANCHOR_DOCUMENT="your-main-doc.pdf"
 ```
 
+预留 OCR fallback 开关：
+
+```powershell
+$env:PROJECTPILOT_OCR_ENABLED="true"
+```
+
 查看当前环境变量：
 
 ```powershell
@@ -191,6 +197,12 @@ python -m app.mcp_server --check
 
 ```powershell
 python -m pytest -q
+```
+
+当前基线结果：
+
+```text
+23 passed
 ```
 
 运行单个测试文件：

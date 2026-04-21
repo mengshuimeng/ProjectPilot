@@ -64,6 +64,8 @@ ProjectPilot 明确调用外部能力，而不是只做网页聊天。
 - doc
 - ppt
 
+当前版本还预留了 OCR fallback 接口。默认不开启；当环境安装 `pytesseract`、`Pillow` 并配置好 Tesseract 时，可通过环境变量启用。
+
 ### 本地工具注册层
 
 `app/tool_registry.py` 提供本地工具入口：
@@ -71,6 +73,7 @@ ProjectPilot 明确调用外部能力，而不是只做网页聊天。
 - 本地文件检索。
 - Office 转换能力检测。
 - Office 旧格式转换调用。
+- 本地项目知识图谱摘要。
 - MCP 工具状态描述。
 
 `app/mcp_server.py` 提供 stdio MCP server 入口。自检命令：
@@ -148,6 +151,7 @@ Generate -> Verify -> Retry Repair -> Verify
 - source coverage 检查。
 - unsupported claims 轻量检查。
 - claim-evidence alignment。
+- 句子级 claim-support 支撑明细。
 - field duplication 检查。
 - summary quality warnings。
 
@@ -185,3 +189,11 @@ data/processed/verify_report.json
 - final verify report
 
 这让项目可以解释“为什么这样生成”，而不是只给一个黑盒答案。
+
+## 4. 当前答辩口径
+
+当前版本最适合在答辩中强调三件事：
+
+1. 这不是普通聊天框，而是围绕主材料、补充材料、证据检索和校验闭环构建的工作流。
+2. 生成内容可以追踪到 `evidence / meta / verify_report`，具备可解释性。
+3. 系统保留本地 fallback、MCP 工具和 OCR 扩展位，体现了工程边界与后续演进方向。

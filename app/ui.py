@@ -49,6 +49,18 @@ MODE_LABELS = {
 }
 
 
+def _next_action(profile: dict[str, Any], report: dict[str, Any], visible_tasks: list[str]) -> tuple[str, str]:
+    if not profile:
+        return "先上传一个主材料文件，然后点击“保存上传并抽取”。", "blue"
+    if not report:
+        return "项目概览已建立，下一步建议点击“运行校验”。", "yellow"
+    if not visible_tasks:
+        return "校验已完成，下一步建议点击“生成全部”或在右侧单独生成。", "green"
+    if report.get("warnings"):
+        return "当前已有结果，建议优先展示校验提示和证据链，再说明 retry 修复。", "yellow"
+    return "当前流程已完成，可以直接录屏展示项目概览、结果和证据链。", "green"
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -455,7 +467,21 @@ def _evidence_summary(task_name: str | None, profile: dict[str, Any]) -> dict[st
         "mode": _mode_text(str(meta.get("generation_mode") or meta.get("mode") or "未知")),
         "paths": meta.get("paths", {}),
         "anchor_document": evidence.get("anchor_document") or profile.get("anchor_document") or "暂无",
+        "used_sources": list(meta.get("used_sources", [])),
+        "used_roles": list(meta.get("used_roles", [])),
+        "claim_evidence_alignment": (meta.get("final_verify_report") or {}).get("claim_evidence_alignment", {}),
+        "source_coverage_summary": (meta.get("final_verify_report") or {}).get("source_coverage_summary", {}),
     }
+
+
+def _claim_support_summary(report: dict[str, Any]) -> str:
+    claim = report.get("claim_evidence_alignment") or {}
+    if not claim:
+        return "暂无 claim-support 摘要。"
+    checked = int(claim.get("checked_count", 0))
+    supported = int(claim.get("supported_count", 0))
+    ratio = float(claim.get("support_ratio", 0.0))
+    return f"已检查 {checked} 条声明，{supported} 条获得 evidence 支撑，支撑率 {ratio:.0%}。"
 
 
 st.set_page_config(page_title="ProjectPilot", layout="wide")
@@ -503,6 +529,8 @@ report = dict(st.session_state.get("report", {}))
 anchor_doc = profile.get("anchor_document") or next((doc.get("name") for doc in docs if doc.get("role") == "anchor"), "未选择")
 session_id = str(st.session_state.get("session_id", "")).strip()
 mode_tone = "blue" if llm_status.get("mode") == "Harness + LLM" else "yellow"
+visible_tasks = list(st.session_state.get("visible_tasks", []))
+next_action_text, next_action_tone = _next_action(profile, report, visible_tasks)
 
 model_state = "已连接" if llm_status.get("available") else "本地处理"
 st.markdown(
@@ -517,6 +545,10 @@ st.markdown(
     + "</div>"
     "<div class='flow-line'>上传材料 → 整理项目概览 → 生成答辩与说明文档</div>"
     "</div>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    f"<div class='status-row'>{_status_pill('当前建议', next_action_text, next_action_tone)}</div>",
     unsafe_allow_html=True,
 )
 
@@ -572,11 +604,11 @@ with upload_right:
                 st.caption("没有补充材料也可以运行。")
         st.caption("补充材料用于完善细节；内容冲突时默认以主材料为准。")
 
-_section_title("步骤 2", "整理与生成", "保存材料、检查内容，或一次性生成全部交付物。")
+_section_title("步骤 2", "整理与生成", "保存材料、运行校验，或一次性生成全部交付物。")
 with st.container(border=True):
     action_cols = st.columns([1.35, 1, 1, 0.9, 0.95])
     with action_cols[0]:
-        if st.button("生成全部材料", type="primary", width="stretch"):
+        if st.button("生成全部", type="primary", width="stretch"):
             profile_result = _extract_current_materials(anchor_upload, list(supporting_uploads or []))
             if profile_result is None:
                 st.stop()
@@ -602,7 +634,7 @@ with st.container(border=True):
                 st.success(f"已保存主材料：{manifest['anchor_document'] if manifest else ''}")
                 st.rerun()
     with action_cols[2]:
-        if st.button("检查内容", width="stretch"):
+        if st.button("运行校验", width="stretch"):
             if anchor_upload is not None:
                 _extract_current_materials(anchor_upload, list(supporting_uploads or []))
             elif not _has_raw_files():
@@ -622,7 +654,7 @@ with st.container(border=True):
             st.session_state["session_id"] = ""
             st.rerun()
     with action_cols[4]:
-        if st.button("载入示例", width="stretch"):
+        if st.button("重置 Demo 示例", width="stretch"):
             _write_demo_materials()
             st.success("已创建新的 Demo 会话。")
             st.rerun()
@@ -657,7 +689,7 @@ with main_col:
             with detail_b:
                 _render_profile_summary_card("局限性", "limitations_summary", "limitation_candidates", profile)
         else:
-            st.info("上传主材料后点击“保存上传并抽取”，或点击“载入示例”创建一个干净示例会话。")
+            st.info("上传主材料后点击“保存上传并抽取”，或点击“重置 Demo 示例”创建一个干净示例会话。")
 
     if docs:
         with st.expander("查看解析文件列表", expanded=False):
@@ -683,6 +715,9 @@ with side_col:
             if not report.get("warnings"):
                 for info in report.get("infos", [])[:2]:
                     st.info(info)
+            claim_alignment = report.get("claim_evidence_alignment") or {}
+            if claim_alignment:
+                st.caption(_claim_support_summary(report))
         else:
             st.info("尚未生成校验报告。")
 
@@ -710,9 +745,18 @@ with side_col:
                 with st.container(border=True):
                     st.markdown(content)
             else:
-                st.info("暂无输出。可点击本页签内按钮单独生成，或在步骤 2 点击“生成全部材料”。")
+                st.info("暂无输出。可点击本页签内按钮单独生成，或在步骤 2 点击“生成全部”。")
 
             if meta:
+                final_report = meta.get("final_verify_report") or {}
+                evidence_summary_cols = st.columns(4)
+                evidence_summary_cols[0].metric("来源数量", len(meta.get("used_sources", [])))
+                evidence_summary_cols[1].metric("来源角色", _role_text(list(meta.get("used_roles", []))))
+                evidence_summary_cols[2].metric("retry", "已发生" if meta.get("retry_used") or meta.get("retry_applied") else "未发生")
+                evidence_summary_cols[3].metric("支撑率", f"{float((final_report.get('claim_evidence_alignment') or {}).get('support_ratio', 0.0)):.0%}")
+
+                st.caption(_claim_support_summary(final_report))
+
                 source_col, mode_col = st.columns([1.25, 0.75])
                 with source_col:
                     st.markdown("**参考材料**")
@@ -725,6 +769,20 @@ with side_col:
                     st.caption(f"方式：{_mode_text(str(meta.get('generation_mode') or meta.get('mode') or '未知'))}")
                     st.caption("自动修正：已发生" if meta.get("retry_used") or meta.get("retry_applied") else "自动修正：未发生")
                     st.caption(f"材料类型：{_role_text(list(meta.get('used_roles', [])))}")
+
+                claim_alignment = final_report.get("claim_evidence_alignment") or {}
+                if claim_alignment.get("details"):
+                    with st.expander("查看 claim-support 摘要", expanded=False):
+                        for item in claim_alignment.get("details", [])[:3]:
+                            st.markdown(f"**声明**：{item.get('claim', '暂无')}")
+                            st.caption(
+                                f"来源：{item.get('best_source', '暂无')} | "
+                                f"角色：{ROLE_LABELS.get(str(item.get('best_role', '')), str(item.get('best_role', '')))} | "
+                                f"语义相似度：{float(item.get('best_semantic_similarity', 0.0)):.2f}"
+                            )
+                            excerpt = str(item.get("best_evidence_excerpt", "")).strip()
+                            if excerpt:
+                                st.caption(f"证据片段：{excerpt}")
 
 _section_title("材料依据", "参考来源", "展示当前内容参考了哪些主材料和补充材料。")
 latest_task = _latest_visible_task()
@@ -740,6 +798,21 @@ with st.container(border=True):
         ev_c.metric("处理方式", evidence_info.get("mode", "未知"))
         ev_d.metric("自动修正", "已发生" if evidence_info.get("retry") else "未发生")
 
+        claim_report = evidence_info.get("claim_evidence_alignment") or {}
+        if claim_report:
+            st.caption(
+                f"claim-support 对齐：{int(claim_report.get('supported_count', 0))}/"
+                f"{int(claim_report.get('checked_count', 0))}，"
+                f"支撑率 {float(claim_report.get('support_ratio', 0.0)):.0%}"
+            )
+        source_coverage = evidence_info.get("source_coverage_summary") or {}
+        if source_coverage:
+            st.caption(
+                f"anchor_used={source_coverage.get('anchor_used', False)} | "
+                f"covered_sources={source_coverage.get('covered_count', 0)} | "
+                f"minimum_expected={source_coverage.get('minimum_expected', 0)}"
+            )
+
         st.markdown("**主材料来源**")
         _badge_list(evidence_info.get("anchor_sources", []) or [evidence_info.get("anchor_document", "暂无")], 8)
         st.markdown("**补充材料来源**")
@@ -748,6 +821,21 @@ with st.container(border=True):
             _badge_list(supporting_sources, 12)
         else:
             st.caption("当前内容未使用补充材料，或尚未找到可用补充片段。")
+
+        if evidence_info.get("used_sources"):
+            st.markdown("**本次实际使用来源**")
+            _badge_list(evidence_info.get("used_sources", []), 12)
+
+        chunks = list(evidence_info.get("chunks", []))
+        if chunks:
+            with st.expander("查看关键 evidence 片段", expanded=False):
+                for chunk in chunks[:4]:
+                    st.markdown(
+                        f"**{chunk.get('source', '未知来源')}**"
+                        f" · {ROLE_LABELS.get(str(chunk.get('role', '')), str(chunk.get('role', '')))}"
+                        f" · score={chunk.get('score', 0)}"
+                    )
+                    st.caption(chunk.get("text", ""))
 
         paths = evidence_info.get("paths", {})
         if paths:

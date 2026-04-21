@@ -114,6 +114,8 @@ ProjectPilot V2 的质量控制分为四层：
 python -m pytest -q
 ```
 
+当前测试环境已固定到项目内可控临时目录，不再依赖系统 Temp 路径，避免 Windows 权限差异导致 `tmp_path` 相关用例不稳定。
+
 当前覆盖内容包括：
 
 - parser 读取 md/pdf。
@@ -139,6 +141,5 @@ python -m pytest -q
 最近验证结果：
 
 ```text
-17 passed
+23 passed
 ```
-
