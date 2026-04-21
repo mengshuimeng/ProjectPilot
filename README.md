@@ -226,6 +226,7 @@ pip install -r requirements.txt
 ```powershell
 python main.py status
 python main.py doctor
+python -m app.mcp_server --check
 ```
 
 `doctor` 会显示默认工作区、semantic retrieval、OCR fallback、MCP 工具数量以及最近一次 verify 摘要。
